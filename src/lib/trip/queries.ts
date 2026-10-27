@@ -2,6 +2,8 @@ import "server-only";
 
 import { getSupabaseServer } from "@/lib/supabase/server";
 
+import { parseCardSnapshot, type CardSnapshot } from "@/lib/card/snapshot";
+
 import { isValidTripId } from "./id";
 import {
   CONTACT_SELECT,
@@ -45,4 +47,24 @@ export async function getTripContact(
   if (!data) return null;
   const row = data as unknown as { contact_type: string; contact_value: string };
   return { contactType: row.contact_type, contactValue: row.contact_value };
+}
+
+/**
+ * Snapshot kartu trip (hanya kolom `card_snapshot`), atau null bila id tidak
+ * valid, trip tidak ada, atau snapshot kosong/rusak. Id tidak valid tidak
+ * menyentuh database; error database dilempar.
+ */
+export async function getCardSnapshot(id: string): Promise<CardSnapshot | null> {
+  if (!isValidTripId(id)) return null;
+  const { data, error } = await getSupabaseServer()
+    .from("trips")
+    .select("card_snapshot")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    console.error("[getCardSnapshot] query gagal", { code: error.code });
+    throw new Error("Gagal memuat kartu trip.");
+  }
+  if (!data) return null;
+  return parseCardSnapshot((data as unknown as { card_snapshot: unknown }).card_snapshot);
 }

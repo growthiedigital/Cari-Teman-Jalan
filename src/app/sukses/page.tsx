@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 
+import { siteUrlFromHeaders } from "@/lib/card/site-url";
 import { isValidTripId } from "@/lib/trip/id";
+
+import { SuccessCard } from "./success-card";
 
 export const metadata = {
   title: "Trip tersimpan | Trip Card",
@@ -11,6 +15,7 @@ export default async function SuksesPage({
 }: PageProps<"/sukses">) {
   const { id } = await searchParams;
   const tripId = isValidTripId(id) ? id : null;
+  const siteUrl = tripId ? siteUrlFromHeaders(await headers()) : "";
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-4 px-6 py-12">
@@ -23,13 +28,7 @@ export default async function SuksesPage({
               {tripId}
             </span>
           </p>
-          <Link
-            href={`/trip/${tripId}`}
-            prefetch={false}
-            className="rounded-xl bg-zinc-900 px-4 py-3.5 text-center text-base font-semibold text-white dark:bg-white dark:text-zinc-900"
-          >
-            Lihat halaman trip
-          </Link>
+          <SuccessCard id={tripId} siteUrl={siteUrl} />
         </>
       ) : (
         <>

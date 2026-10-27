@@ -11,6 +11,7 @@ import {
   type TripField,
   type TripType,
 } from "./constants";
+import { DEFAULT_THEME, isCardTheme, type CardTheme } from "@/lib/card/spec";
 import {
   currentMonthJakarta,
   isValidDateString,
@@ -45,6 +46,8 @@ export type TripInput = {
   monthStart: string | null;
   monthEnd: string | null;
   intention: string | null;
+  /** Tema warna kartu; bawaan "a" bila tidak dikirim. */
+  theme: CardTheme;
   deviceId: string;
 };
 
@@ -262,6 +265,12 @@ function monthField(
   });
 }
 
+/** Tema kartu: tidak dikirim -> "a"; nilai selain "a"/"b" ditolak. */
+const themeField = custom<CardTheme>((value) => {
+  if (value === undefined || value === null || value === "") return ok(DEFAULT_THEME);
+  return isCardTheme(value) ? ok(value) : fail("Tema kartu tidak dikenal.");
+});
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const deviceIdField = custom<string>((value) =>
   typeof value === "string" && UUID.test(value)
@@ -310,6 +319,7 @@ export function validateTrip(raw: unknown, now: Date = new Date()): ValidationRe
   const buddiesWanted = run("buddiesWanted", buddiesField);
   const note = run("note", optionalText("Catatan", LIMITS.note));
   const budget = run("budget", budgetField);
+  const theme = run("theme", themeField);
   const deviceId = run("deviceId", deviceIdField);
 
   // Kontak: aturan nilai bergantung pada jenis kontak.
@@ -391,6 +401,7 @@ export function validateTrip(raw: unknown, now: Date = new Date()): ValidationRe
       monthStart,
       monthEnd,
       intention,
+      theme: theme as CardTheme,
       deviceId: deviceId as string,
     },
   };

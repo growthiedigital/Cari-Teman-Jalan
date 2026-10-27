@@ -69,6 +69,7 @@ export type TripField =
   | "monthStart"
   | "monthEnd"
   | "intention"
+  | "theme"
   | "deviceId";
 
 // "form" dipakai untuk kesalahan yang bukan milik satu field tertentu.

@@ -388,3 +388,25 @@ describe("jenis trip dan isian dasar", () => {
     );
   });
 });
+
+describe("tema kartu", () => {
+  it("menerima tema a dan b", () => {
+    for (const theme of ["a", "b"]) {
+      const result = validateTrip(rencana({ theme }), NOW);
+      expect(result.ok && result.data.theme).toBe(theme);
+    }
+  });
+
+  it("bawaan tema a bila tidak dikirim (juga untuk jenis niat)", () => {
+    const r = validateTrip(rencana(), NOW);
+    expect(r.ok && r.data.theme).toBe("a");
+    const n = validateTrip(niat({ theme: null }), NOW);
+    expect(n.ok && n.data.theme).toBe("a");
+  });
+
+  it("menolak tema yang tidak dikenal", () => {
+    for (const theme of ["c", "A", "dark", 1, true, {}]) {
+      expect(errorsOf(rencana({ theme }))).toEqual({ theme: "Tema kartu tidak dikenal." });
+    }
+  });
+});
