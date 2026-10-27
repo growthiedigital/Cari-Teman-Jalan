@@ -106,3 +106,12 @@ alter table public.events enable row level security;
 -- Lapisan tambahan: cabut juga hak akses langsung untuk anon/authenticated.
 revoke all on public.trips from anon, authenticated;
 revoke all on public.events from anon, authenticated;
+
+-- Pastikan service_role (dipakai server aplikasi) punya hak akses ke tabel.
+-- Di proyek Supabase baru, tabel di schema public tidak selalu otomatis
+-- diberi hak akses ke role API, sehingga tanpa baris ini muncul
+-- "permission denied for table trips".
+grant usage on schema public to service_role;
+grant all on public.trips to service_role;
+grant all on public.events to service_role;
+grant usage, select on all sequences in schema public to service_role;
