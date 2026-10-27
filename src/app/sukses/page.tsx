@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { isValidTripId } from "@/lib/trip/id";
+
 export const metadata = {
   title: "Trip tersimpan | Trip Card",
 };
@@ -8,7 +10,7 @@ export default async function SuksesPage({
   searchParams,
 }: PageProps<"/sukses">) {
   const { id } = await searchParams;
-  const tripId = typeof id === "string" && /^[0-9A-Za-z]{10}$/.test(id) ? id : null;
+  const tripId = isValidTripId(id) ? id : null;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-4 px-6 py-12">
@@ -21,6 +23,13 @@ export default async function SuksesPage({
               {tripId}
             </span>
           </p>
+          <Link
+            href={`/trip/${tripId}`}
+            prefetch={false}
+            className="rounded-xl bg-zinc-900 px-4 py-3.5 text-center text-base font-semibold text-white dark:bg-white dark:text-zinc-900"
+          >
+            Lihat halaman trip
+          </Link>
         </>
       ) : (
         <>
