@@ -2,7 +2,7 @@
 
 Aplikasi web tanpa login untuk orang yang cari teman jalan: isi form singkat, dapat kartu trip untuk dibagikan ke media sosial, dan halaman detail publik dengan tombol Hubungi.
 
-> **Status: Tahap 0 (fondasi).** Baru ada halaman awal, skema database, dan pengecekan kesehatan (`/api/health`). Fitur utama dibuat di tahap berikutnya.
+> **Status: Tahap 1 (form + simpan).** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau), penyimpanan ke database lewat `POST /api/trips`, dan halaman `/sukses`. Kartu, halaman detail, edit, dan "Trip saya" dibuat di tahap berikutnya.
 
 Dibangun dengan Next.js (App Router, TypeScript, Tailwind), dideploy di Vercel, dengan Supabase sebagai database Postgres.
 
@@ -86,4 +86,22 @@ Jika kamu mengubah Environment Variables setelah deploy, lakukan **Redeploy** (D
 - Row Level Security aktif tanpa policy untuk `trips` dan `events`, dan hak akses anon/authenticated dicabut, jadi kunci publik tidak bisa membaca atau menulis apa pun.
 - Tidak memakai Supabase Auth. Tabel `events` tidak menyimpan data pribadi.
 - Variabel lingkungan ada di `.env.example` (hanya nama). Untuk pengembangan lokal, salin menjadi `.env.local`; file itu diabaikan git.
-- Perintah: `npm run dev`, `npm run build`, `npm run lint`.
+- Perintah: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`, `npm test`.
+
+### Tahap 1: cara kerja singkat
+
+- Validasi dan normalisasi ada di satu tempat, `src/lib/trip/schema.ts` (zod), dipakai form di browser dan `POST /api/trips`. Server yang menentukan; isian dari browser tidak dipercaya.
+- `POST /api/trips` memvalidasi ulang (gagal: `400` dengan pesan per field, database tidak disentuh), lalu menyimpan ke `trips`. Sukses: `201 { id, editToken }`.
+- ID trip: 10 karakter base62 acak. Token edit: 32 byte acak, hanya hash SHA-256-nya yang disimpan (`edit_token_hash`); token mentah dikirim ke browser satu kali dan disimpan di localStorage (`tripcard:mytrips`). Token tidak pernah masuk URL atau log.
+- `creator_ip_hash` = SHA-256(IP + `IP_HASH_SALT`), `device_id` = UUID acak dari localStorage. Keduanya baru disimpan; belum ada pembatasan (Tahap 6).
+- Kontak tersimpan ternormalisasi (WhatsApp `628xx` tanpa plus; Instagram tanpa `@`, huruf kecil) dan tidak ditampilkan di pratinjau.
+
+### Menguji validasi server dengan curl
+
+Ganti `URL-VERCEL`. Hasil yang benar: status `400` dan pesan error per field (tujuan terlalu panjang, tanggal pulang sebelum berangkat); database tidak disentuh.
+
+```bash
+curl -i -X POST https://URL-VERCEL/api/trips \
+  -H "Content-Type: application/json" \
+  -d '{"type":"rencana","destination":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","creatorName":"Billy","tags":["foodie"],"contactType":"whatsapp","contactValue":"081234567890","startDate":"2099-01-05","endDate":"2099-01-01","deviceId":"3f2b8c1e-5a47-4d0e-9a3b-1c2d3e4f5a6b"}'
+```
