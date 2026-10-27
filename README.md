@@ -2,7 +2,7 @@
 
 Aplikasi web tanpa login untuk orang yang cari teman jalan: isi form singkat, dapat kartu trip untuk dibagikan ke media sosial, dan halaman detail publik dengan tombol Hubungi.
 
-> **Status: Tahap 1 (form + simpan).** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau), penyimpanan ke database lewat `POST /api/trips`, dan halaman `/sukses`. Kartu, halaman detail, edit, dan "Trip saya" dibuat di tahap berikutnya.
+> **Status: Tahap 2 (halaman detail publik).** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau), penyimpanan ke database lewat `POST /api/trips`, halaman `/sukses`, halaman publik `/trip/{id}`, dan tombol Hubungi lewat `/go/{id}`. Kartu, edit, dan "Trip saya" dibuat di tahap berikutnya.
 
 Dibangun dengan Next.js (App Router, TypeScript, Tailwind), dideploy di Vercel, dengan Supabase sebagai database Postgres.
 
@@ -49,6 +49,14 @@ File ini aman dijalankan ulang kalau diperlukan.
    | `IP_HASH_SALT` | string acak panjang (minimal 32 karakter), buat sendiri, mis. dari password manager. Jangan dibagikan. |
 
    Jangan memberi awalan `NEXT_PUBLIC_` pada ketiganya.
+
+   Tambahkan juga satu variabel publik untuk footer halaman trip (tahap 2):
+
+   | Nama | Isi |
+   | --- | --- |
+   | `NEXT_PUBLIC_REPORT_CONTACT` | Kontak untuk lapor/minta hapus trip, mis. email `halo@contoh.com`. Jika berisi `@` otomatis jadi tautan email. Jika dikosongkan, footer menampilkan "[kontak belum diatur]". |
+
+   Variabel berawalan `NEXT_PUBLIC_` **ditanam saat build**, jadi setelah mengisi atau mengubahnya wajib **Redeploy**. Isinya memang publik; jangan isi rahasia.
 4. Klik **Deploy**. Setelah selesai, Vercel memberi URL seperti `https://cari-teman-jalan.vercel.app`.
 
 Jika kamu mengubah Environment Variables setelah deploy, lakukan **Redeploy** (Deployments > menu `…` > Redeploy) supaya nilainya terbaca.
@@ -95,6 +103,24 @@ Jika kamu mengubah Environment Variables setelah deploy, lakukan **Redeploy** (D
 - ID trip: 10 karakter base62 acak. Token edit: 32 byte acak, hanya hash SHA-256-nya yang disimpan (`edit_token_hash`); token mentah dikirim ke browser satu kali dan disimpan di localStorage (`tripcard:mytrips`). Token tidak pernah masuk URL atau log.
 - `creator_ip_hash` = SHA-256(IP + `IP_HASH_SALT`), `device_id` = UUID acak dari localStorage. Keduanya baru disimpan; belum ada pembatasan (Tahap 6).
 - Kontak tersimpan ternormalisasi (WhatsApp `628xx` tanpa plus; Instagram tanpa `@`, huruf kecil) dan tidak ditampilkan di pratinjau.
+
+### Tahap 2: cara kerja singkat
+
+- `/trip/{id}`: halaman publik (server component, dirender dinamis, `noindex`). ID harus 10 karakter base62; ID tidak valid atau trip tidak ada menampilkan "Trip tidak ditemukan" dengan status 404 (ID tidak valid tidak menyentuh database). Tidak ada daftar/pencarian trip; `/trip` tanpa ID adalah 404.
+- Query halaman ini memakai daftar kolom eksplisit (`PUBLIC_TRIP_COLUMNS` di `src/lib/trip/public-columns.ts`), tanpa kontak, hash token, hash IP, device id, maupun snapshot kartu.
+- Tombol "Tertarik / Hubungi" adalah tautan ke `/go/{id}`. Route itu membaca kontak di server dan membalas redirect 302 ke `https://wa.me/{nomor}` atau `https://instagram.com/{username}` (header `Cache-Control: no-store`, `X-Robots-Tag: noindex`). Nomor/akun tidak ada di HTML halaman trip.
+- `public/robots.txt` melarang `/go/` dan `/trip/`.
+
+Cek setelah deploy (ganti `URL` dan `ID`):
+
+```bash
+# harus 302 dengan header Location ke wa.me / instagram.com
+curl -i https://URL/go/ID
+# nomor kontak tidak boleh ada di HTML; ganti pola dengan nomor/akun yang kamu isi (hasil harus 0)
+curl -s https://URL/trip/ID | grep -c "62812"
+# ID ngawur: harus 404
+curl -i https://URL/trip/ngawur1234
+```
 
 ### Menguji validasi server dengan curl
 
