@@ -1,3 +1,13 @@
 User-agent: *
 Disallow: /go/
 Disallow: /trip/
+
+# Crawler pratinjau link boleh membaca halaman trip (judul + gambar kartu untuk
+# Open Graph). Halaman tetap noindex lewat meta robots. /go/ tetap dilarang.
+User-agent: facebookexternalhit
+User-agent: meta-externalagent
+User-agent: Facebot
+User-agent: WhatsApp
+User-agent: Twitterbot
+Disallow: /go/
+Allow: /trip/

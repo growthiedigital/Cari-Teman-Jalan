@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { buildCardSnapshot } from "@/lib/card/snapshot";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { validateTrip, type TripInput } from "@/lib/trip/schema";
 import {
@@ -27,7 +28,6 @@ function buildRow(
   editTokenHash: string,
   creatorIpHash: string,
 ) {
-  const theme = "a";
   return {
     id,
     edit_token_hash: editTokenHash,
@@ -47,20 +47,9 @@ function buildRow(
     month_start: trip.monthStart,
     month_end: trip.monthEnd,
     intention: trip.intention,
-    theme,
+    theme: trip.theme,
     // Salinan field yang tampil di kartu; sengaja tanpa kontak dan tanpa token.
-    card_snapshot: {
-      type: trip.type,
-      title: trip.title,
-      destination: trip.destination,
-      tags: trip.tags,
-      buddies_wanted: trip.buddiesWanted,
-      start_date: trip.startDate,
-      end_date: trip.endDate,
-      month_start: trip.monthStart,
-      month_end: trip.monthEnd,
-      theme,
-    },
+    card_snapshot: buildCardSnapshot(trip),
     creator_ip_hash: creatorIpHash,
     device_id: trip.deviceId,
   };

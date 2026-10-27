@@ -125,6 +125,21 @@ describe("POST /api/trips: input valid (database ditiru, BUKAN Supabase sungguha
     expect(JSON.stringify(body)).not.toContain("6281234567890");
   });
 
+  it("tema b masuk ke kolom theme dan card_snapshot.theme; tema tak dikenal -> 400", async () => {
+    insert.mockResolvedValue({ error: null });
+    const res = await POST(request(validBody({ theme: "b" })));
+    expect(res.status).toBe(201);
+    const row = insert.mock.calls[0][0];
+    expect(row.theme).toBe("b");
+    expect(row.card_snapshot.theme).toBe("b");
+
+    insert.mockClear();
+    const bad = await POST(request(validBody({ theme: "c" })));
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).errors).toEqual({ theme: "Tema kartu tidak dikenal." });
+    expect(insert).not.toHaveBeenCalled();
+  });
+
   it("jenis niat disimpan sebagai tanggal 1 dan field rencana null", async () => {
     insert.mockResolvedValue({ error: null });
     const res = await POST(

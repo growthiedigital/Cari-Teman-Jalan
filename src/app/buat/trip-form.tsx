@@ -16,9 +16,12 @@ import {
   type TripField,
   type TripType,
 } from "@/lib/trip/constants";
+import { DEFAULT_THEME, type CardTheme } from "@/lib/card/spec";
 import { formatDateId, formatMonthId, formatRupiah } from "@/lib/trip/dates";
 import { getDeviceId, saveMyTrip } from "@/lib/trip/local-storage";
 import { textLength, validateTrip, type TripInput } from "@/lib/trip/schema";
+
+import { CardPreview } from "./card-preview";
 
 type Props = {
   today: string;
@@ -169,6 +172,7 @@ export function TripForm({ today, months }: Props) {
   const [type, setType] = useState<TripType | null>(null);
   const [values, setValues] = useState<FormValues>(INITIAL);
   const [errors, setErrors] = useState<TripErrors>({});
+  const [theme, setTheme] = useState<CardTheme>(DEFAULT_THEME);
   const [preview, setPreview] = useState<TripInput | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -210,7 +214,7 @@ export function TripForm({ today, months }: Props) {
 
   function handlePreview(event: FormEvent) {
     event.preventDefault();
-    const result = validateTrip({ ...values, type, deviceId: getDeviceId() });
+    const result = validateTrip({ ...values, type, theme, deviceId: getDeviceId() });
     if (!result.ok) {
       setErrors(result.errors);
       focusFirstError(result.errors);
@@ -232,7 +236,7 @@ export function TripForm({ today, months }: Props) {
       const response = await fetch("/api/trips", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...values, type, deviceId: preview.deviceId }),
+        body: JSON.stringify({ ...values, type, theme, deviceId: preview.deviceId }),
       });
       const data: unknown = await response.json().catch(() => null);
       const body = (data ?? {}) as {
@@ -323,6 +327,11 @@ export function TripForm({ today, months }: Props) {
             Pastikan semuanya sudah benar sebelum dikirim.
           </p>
         </header>
+        <CardPreview
+          payload={{ ...values, type, theme, deviceId: preview.deviceId }}
+          theme={theme}
+          onThemeChange={setTheme}
+        />
         <dl className="divide-y divide-zinc-200 rounded-2xl border border-zinc-200 px-4 dark:divide-zinc-800 dark:border-zinc-800">
           <PreviewRow label="Jenis" value={TRIP_TYPE_LABELS[preview.type]} />
           <PreviewRow label="Judul" value={preview.title} />

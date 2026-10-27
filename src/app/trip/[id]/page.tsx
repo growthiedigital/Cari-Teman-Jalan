@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { cache, type ReactNode } from "react";
+
+import { cardImageUrl, siteUrlFromHeaders, tripUrl } from "@/lib/card/site-url";
+import { getCardDimensions } from "@/lib/card/spec";
 
 import { TAG_LABELS, type TripType } from "@/lib/trip/constants";
 import { formatBudgetPerPerson, formatTripTime } from "@/lib/trip/format";
@@ -18,9 +22,39 @@ export async function generateMetadata({
 }: PageProps<"/trip/[id]">): Promise<Metadata> {
   const { id } = await params;
   const trip = await loadTrip(id);
+  // `noindex` tidak menghalangi crawler pratinjau link (WhatsApp, Instagram).
+  const robots = { index: false, follow: false };
+  if (!trip) return { title: "Trip tidak ditemukan | Trip Card", robots };
+
+  const siteUrl = siteUrlFromHeaders(await headers());
+  const time = formatTripTime(trip);
+  const description = time ? `${trip.destination} · ${time}` : trip.destination;
+  const { width, height } = getCardDimensions("4x5", "og");
+  const image = {
+    url: cardImageUrl(siteUrl, trip.id, "4x5", "og"),
+    width,
+    height,
+    alt: `Kartu trip: ${trip.title}`,
+  };
+
   return {
-    title: trip ? `${trip.title} | Trip Card` : "Trip tidak ditemukan | Trip Card",
-    robots: { index: false, follow: false },
+    metadataBase: new URL(siteUrl),
+    title: `${trip.title} | Trip Card`,
+    description,
+    robots,
+    openGraph: {
+      type: "website",
+      title: trip.title,
+      description,
+      url: tripUrl(siteUrl, trip.id),
+      images: [image],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: trip.title,
+      description,
+      images: [image.url],
+    },
   };
 }
 

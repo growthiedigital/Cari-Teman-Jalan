@@ -2,7 +2,7 @@
 
 Aplikasi web tanpa login untuk orang yang cari teman jalan: isi form singkat, dapat kartu trip untuk dibagikan ke media sosial, dan halaman detail publik dengan tombol Hubungi.
 
-> **Status: Tahap 2 (halaman detail publik).** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau), penyimpanan ke database lewat `POST /api/trips`, halaman `/sukses`, halaman publik `/trip/{id}`, dan tombol Hubungi lewat `/go/{id}`. Kartu, edit, dan "Trip saya" dibuat di tahap berikutnya.
+> **Status: Tahap 3 (generator kartu).** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau teks dan pratinjau kartu), penyimpanan ke database lewat `POST /api/trips`, kartu trip berupa gambar PNG (`/api/card/{id}`), layar `/sukses` (unduh gambar, salin link), halaman publik `/trip/{id}` dengan pratinjau link (Open Graph), dan tombol Hubungi lewat `/go/{id}`. Edit, "Trip saya", dan analytics dibuat di tahap berikutnya.
 
 Dibangun dengan Next.js (App Router, TypeScript, Tailwind), dideploy di Vercel, dengan Supabase sebagai database Postgres.
 
@@ -55,6 +55,12 @@ File ini aman dijalankan ulang kalau diperlukan.
    | Nama | Isi |
    | --- | --- |
    | `NEXT_PUBLIC_REPORT_CONTACT` | Kontak untuk lapor/minta hapus trip, mis. email `halo@contoh.com`. Jika berisi `@` otomatis jadi tautan email. Jika dikosongkan, footer menampilkan "[kontak belum diatur]". |
+
+   Opsional, hanya bila memakai **domain kustom** (tahap 3):
+
+   | Nama | Isi |
+   | --- | --- |
+   | `NEXT_PUBLIC_SITE_URL` | Alamat situs tanpa garis miring akhir, mis. `https://tripcard.id`. Dipakai untuk QR di kartu, tombol "Salin link", dan gambar pratinjau link. Jika dikosongkan, dipakai alamat yang sedang dibuka (mis. `https://cari-teman-jalan.vercel.app`), yang sudah benar selama kamu belum memakai domain kustom. |
 
    Variabel berawalan `NEXT_PUBLIC_` **ditanam saat build**, jadi setelah mengisi atau mengubahnya wajib **Redeploy**. Isinya memang publik; jangan isi rahasia.
 4. Klik **Deploy**. Setelah selesai, Vercel memberi URL seperti `https://cari-teman-jalan.vercel.app`.
@@ -121,6 +127,37 @@ curl -s https://URL/trip/ID | grep -c "62812"
 # ID ngawur: harus 404
 curl -i https://URL/trip/ngawur1234
 ```
+
+### Tahap 3: cara kerja singkat
+
+- **Kartu = gambar PNG yang dibuat di server** dengan `ImageResponse` (`next/og`, runtime Node.js). Satu fungsi murni, `renderCard(snapshot, { ratio, size, url })` di `src/lib/card/render-card.tsx`, dipakai oleh semua jalur: pratinjau form, layar sukses, dan Open Graph. Tidak membaca database, jadi bisa diuji dengan data tiruan.
+- **Kartu adalah snapshot.** Digambar dari kolom `trips.card_snapshot` (bukan data trip terbaru), jadi kartu tidak berubah walau trip diedit nanti. Snapshot tidak memuat nama pembuat, kontak, budget, itinerary, maupun catatan.
+- Ukuran: `r=9x16` 1080x1920 (Story/Reels/TikTok), `r=4x5` 1080x1350 (feed), `size=og` 600x750 untuk pratinjau link (semua dimensi layout memakai satu faktor skala). Pada 9:16, konten penting dijauhkan dari 250px teratas dan 340px terbawah (area UI Instagram/TikTok).
+- Dua jenis tampil berbeda ("Sudah ada rencana": pil terisi, panel tanggal terisi, bingkai garis penuh; "Cari peminat": pil dan panel berkontur, bingkai putus-putus) dan dua tema warna: `a` hangat, `b` malam. Pilihan tema tersimpan di `trips.theme` dan `card_snapshot.theme`.
+- **Endpoint:**
+  - `GET /api/card/{id}?r=9x16|4x5&size=og&download=1`: id harus 10 karakter base62 (id salah = 404 tanpa menyentuh database), `r` salah atau `size` selain `og` = 400. Hanya membaca kolom `card_snapshot`. `download=1` menambah `Content-Disposition: attachment`. Cache: `public, max-age=300, s-maxage=3600, stale-while-revalidate=86400`.
+  - `POST /api/card/preview?r=...`: menerima data form (JSON), memvalidasi dengan skema yang sama, lalu mengembalikan PNG dari renderer yang sama. Tidak menyimpan apa pun; QR mengarah ke URL contoh. Body maks 20.000 karakter; validasi gagal = 400.
+- **Font:** Plus Jakarta Sans (Medium, Bold, ExtraBold; statis, aksara Latin) di `src/assets/fonts/`, lisensi SIL Open Font License 1.1 (`OFL.txt` di folder yang sama). Dimuat dari berkas lokal, tidak ada unduhan font saat runtime. Emoji pada judul/tujuan dibuang dari gambar kartu (font tidak memuat emoji, dan satori akan mengunduh gambar emoji dari internet bila ada).
+- **QR** dibuat di server dengan pustaka `qrcode`: hitam di atas putih dengan zona tenang 4 modul, di tema mana pun.
+- **URL situs** untuk QR dan tautan salin: `NEXT_PUBLIC_SITE_URL` bila diisi, kalau tidak origin permintaan (lihat tabel Environment Variables). Isi variabel ini bila memakai domain kustom.
+- **Open Graph** di `/trip/{id}`: `og:title`, `og:description` (tujuan + waktu), `og:image` = `/api/card/{id}?r=4x5&size=og` (600x750), Twitter card `summary_large_image`. Halaman tetap `noindex`. `public/robots.txt` tidak melarang `/api/card/`; crawler pratinjau (WhatsApp, Meta, Twitter) juga diizinkan membaca `/trip/` (pengunjung lain tetap dilarang), sedangkan `/go/` tetap dilarang untuk semua.
+- Contoh hasil render ada di [`docs/contoh-kartu/`](docs/contoh-kartu/). Untuk menyimpan semua kombinasi saat menjalankan uji: `CARD_OUT_DIR=./hasil npx vitest run src/lib/card/render-card.test.ts`.
+
+Cek setelah deploy (ganti `URL` dan `ID`):
+
+```bash
+# harus 200, image/png, dan header cache-control seperti di atas
+curl -sI "https://URL/api/card/ID?r=4x5&size=og"
+# harus ada Content-Disposition: attachment
+curl -sI "https://URL/api/card/ID?r=9x16&download=1"
+# ID ngawur: 404; r ngawur: 400
+curl -i https://URL/api/card/ngawur
+curl -i "https://URL/api/card/ID?r=1x1"
+# tag Open Graph di halaman trip
+curl -s https://URL/trip/ID | grep -o '<meta[^>]*og:[^>]*>'
+```
+
+Pratinjau link WhatsApp/Instagram di-cache oleh aplikasinya. Gunakan trip baru saat mengecek; untuk memaksa muat ulang di Facebook/Instagram bisa memakai Sharing Debugger Meta.
 
 ### Menguji validasi server dengan curl
 
