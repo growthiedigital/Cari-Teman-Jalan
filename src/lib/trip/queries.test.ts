@@ -49,16 +49,27 @@ describe("getPublicTrip", () => {
 });
 
 describe("getTripContact", () => {
-  it("hanya membaca kolom kontak", async () => {
+  it("hanya membaca kolom kontak dan kolom status", async () => {
     maybeSingle.mockResolvedValue({
-      data: { contact_type: "whatsapp", contact_value: "6281234567890" },
+      data: {
+        contact_type: "whatsapp",
+        contact_value: "6281234567890",
+        is_full: true,
+        type: "rencana",
+        end_date: "2026-12-25",
+      },
       error: null,
     });
     expect(await getTripContact(ID)).toEqual({
       contactType: "whatsapp",
       contactValue: "6281234567890",
+      isFull: true,
+      type: "rencana",
+      endDate: "2026-12-25",
     });
-    expect(select).toHaveBeenCalledWith("contact_type, contact_value");
+    expect(select).toHaveBeenCalledWith(
+      "contact_type, contact_value, is_full, type, end_date",
+    );
   });
 
   it("ID tidak valid -> null tanpa menyentuh database", async () => {

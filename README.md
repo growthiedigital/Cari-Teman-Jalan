@@ -2,7 +2,7 @@
 
 Aplikasi web tanpa login untuk orang yang cari teman jalan: isi form singkat, dapat kartu trip untuk dibagikan ke media sosial, dan halaman detail publik dengan tombol Hubungi.
 
-> **Status: Tahap 4 (edit dan hapus tanpa login).** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau teks dan pratinjau kartu), penyimpanan ke database lewat `POST /api/trips`, kartu trip berupa gambar PNG (`/api/card/{id}`), layar `/sukses` (unduh gambar, salin link, link edit rahasia), halaman publik `/trip/{id}` dengan pratinjau link (Open Graph), tombol Hubungi lewat `/go/{id}`, "Trip saya" (`/trip-saya`), serta edit dan hapus trip lewat link rahasia `/edit/{token}`. Status "Sudah penuh/lewat" dan analytics dibuat di tahap berikutnya.
+> **Status: Tahap 5 (status trip: "Sudah lewat" otomatis dan "Sudah penuh").** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau teks dan pratinjau kartu), penyimpanan ke database lewat `POST /api/trips`, kartu trip berupa gambar PNG (`/api/card/{id}`), layar `/sukses` (unduh gambar, salin link, link edit rahasia), halaman publik `/trip/{id}` dengan pratinjau link (Open Graph), tombol Hubungi lewat `/go/{id}`, "Trip saya" (`/trip-saya`), serta edit dan hapus trip lewat link rahasia `/edit/{token}`. Sejak Tahap 5, trip bisa ditandai "Sudah penuh" dan trip rencana yang tanggal pulangnya lewat otomatis "Sudah lewat". Analytics dibuat di tahap berikutnya.
 
 Dibangun dengan Next.js (App Router, TypeScript, Tailwind), dideploy di Vercel, dengan Supabase sebagai database Postgres.
 
@@ -168,6 +168,42 @@ Pratinjau link WhatsApp/Instagram di-cache oleh aplikasinya. Gunakan trip baru s
 - **`/trip-saya`**: daftar dari localStorage saja (tanpa panggilan server); ada tautannya di halaman awal. Entri yang trip-nya sudah dihapus (halaman edit 404) bisa dibuang lewat "Hapus dari daftar di perangkat ini".
 - **Edit** (`/edit/[token]`): memakai skema dan kolom isian yang sama dengan `/buat` (`validateTripEdit` di `src/lib/trip/schema.ts`, `TripFields` di `src/components/trip-fields.tsx`). Jenis trip tidak bisa diubah. Tanggal berangkat/bulan awal (dan pulang/akhir) hanya dicek "tidak di masa lalu" bila nilainya berubah. `POST /api/trips/edit` (token di body) hanya meng-UPDATE kolom di `EDITABLE_COLUMNS` (`src/lib/trip/edit-columns.ts`); `card_snapshot`, `theme`, `is_full`, hash, dan `device_id` tidak pernah disentuh, jadi kartu tidak ikut berubah.
 - **Hapus**: `POST /api/trips/delete` (token di body) menghapus permanen baris `trips`; baris `events` tidak disentuh. Setelah itu `/trip/{id}`, `/go/{id}`, dan `/api/card/{id}` memberi 404. Gambar kartu di cache CDN (`s-maxage=3600`) bisa masih tampil hingga sekitar satu jam; strategi cache tidak diubah.
+
+### Tahap 5: cara kerja singkat
+
+Tidak ada migrasi: kolom `trips.is_full` sudah ada di `schema.sql` sejak Tahap 0.
+
+- **Aturan status ada di satu tempat:** `src/lib/trip/status.ts`. `isExpired(trip, now)` benar hanya untuk jenis `rencana` yang `end_date`-nya lebih kecil dari tanggal HARI INI menurut Asia/Jakarta (dibandingkan sebagai teks `YYYY-MM-DD`; pada tanggal pulang itu sendiri belum lewat, baru lewat mulai 00:00 WIB hari berikutnya). Jenis `niat` tidak pernah "Sudah lewat". `tripStatus(trip, now)` mengembalikan `{ isFull, isExpired, canContact }` dengan `canContact = !isFull && !isExpired`; dipakai halaman detail, `/go/{id}`, dan halaman edit. Dihitung saat halaman dirender: tanpa cron, tanpa kolom baru.
+- **Halaman detail `/trip/{id}`:** penanda "Sudah lewat" dan/atau "Sudah penuh" di atas jenis trip. Bila `canContact` salah, tombol Hubungi diganti tombol nonaktif (bukan tautan, tanpa `href` ke `/go`) berlabel "Trip ini sudah lewat" atau "Trip ini sudah penuh"; info trip dan footer tetap tampil. Judul, deskripsi, dan Open Graph tidak berubah, begitu juga gambar kartu (snapshot, tanpa status).
+- **`/go/{id}` menegakkan status di server:** trip penuh/lewat dibalas 302 ke `/trip/{id}` (bukan ke WhatsApp/Instagram). Id tidak valid atau trip tidak ada tetap 404.
+- **Tandai penuh:** bagian "Status trip" di `/edit/{token}` memanggil `POST /api/trips/status` dengan `{ token, isFull }` (token di body). Endpoint hanya meng-UPDATE kolom `is_full`; `POST /api/trips/edit` tetap tidak menyentuhnya. Token tidak dikenal = 404 generik, `isFull` bukan boolean = 400.
+
+Cek setelah deploy (ganti `URL` dan `ID`; trip harus sudah ditandai penuh lebih dulu):
+
+```bash
+# trip penuh/lewat: harus 302 dengan Location: /trip/ID (bukan wa.me / instagram.com)
+curl -i https://URL/go/ID
+# halaman detail trip penuh: tidak boleh ada tautan /go/
+curl -s https://URL/trip/ID | grep -c 'href="/go/'
+```
+
+Untuk menguji "Sudah lewat" (form edit menolak tanggal berangkat di masa lalu), ubah tanggal langsung di Supabase > SQL Editor pada trip uji jenis rencana (ganti `ID_TRIP_UJI`):
+
+```sql
+-- catat dulu tanggal aslinya
+select id, start_date, end_date from public.trips where id = 'ID_TRIP_UJI';
+
+-- jadikan sudah lewat (berangkat 2 hari lalu, pulang kemarin, tanggal Jakarta)
+update public.trips
+set start_date = (now() at time zone 'Asia/Jakarta')::date - 2,
+    end_date   = (now() at time zone 'Asia/Jakarta')::date - 1
+where id = 'ID_TRIP_UJI' and type = 'rencana';
+
+-- kembalikan: isi dengan tanggal asli yang dicatat tadi
+update public.trips
+set start_date = 'YYYY-MM-DD', end_date = 'YYYY-MM-DD'
+where id = 'ID_TRIP_UJI';
+```
 
 ### Menguji validasi server dengan curl
 

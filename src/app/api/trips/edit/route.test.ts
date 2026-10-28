@@ -140,6 +140,15 @@ describe("POST /api/trips/edit: sukses (database ditiru, BUKAN Supabase sungguha
     expect(db.rows[0].card_snapshot).toEqual(SNAPSHOT);
   });
 
+  it("is_full yang sudah true tidak dibalik oleh edit, apa pun isi body", async () => {
+    db = createFakeDb([{ ...storedRow(), is_full: true }]);
+    const res = await POST(request(body({ is_full: false, isFull: false })));
+    expect(res.status).toBe(200);
+    expect(db.rows[0].is_full).toBe(true);
+    expect(db.log.updates[0].patch).not.toHaveProperty("is_full");
+    expect(db.log.updates[0].patch).not.toHaveProperty("isFull");
+  });
+
   it("UPDATE hanya memuat kolom yang boleh diedit, dan mencari lewat hash token", async () => {
     await POST(request(body()));
     expect(db.log.updates).toHaveLength(1);

@@ -30,6 +30,7 @@ const ROW: EditableTripRow = {
   month_start: null,
   month_end: null,
   intention: null,
+  is_full: false,
 };
 
 describe("kolom yang di-UPDATE", () => {
@@ -66,8 +67,11 @@ describe("kolom yang di-UPDATE", () => {
     for (const forbidden of NON_EDITABLE_COLUMNS) expect(patch).not.toHaveProperty(forbidden);
   });
 
-  it("kolom baca untuk form edit hanya id, type, dan kolom yang boleh diedit (tanpa hash/ip/device/snapshot)", () => {
-    expect([...EDIT_READ_COLUMNS].sort()).toEqual(["id", "type", ...EDITABLE_COLUMNS].sort());
+  it("kolom baca untuk halaman edit hanya id, type, kolom yang boleh diedit, dan is_full (tanpa hash/ip/device/snapshot)", () => {
+    expect([...EDIT_READ_COLUMNS].sort()).toEqual(
+      ["id", "type", ...EDITABLE_COLUMNS, "is_full"].sort(),
+    );
+    expect(EDITABLE_COLUMNS as readonly string[]).not.toContain("is_full");
     for (const c of ["edit_token_hash", "creator_ip_hash", "device_id", "card_snapshot", "theme"]) {
       expect(EDIT_READ_COLUMNS as readonly string[]).not.toContain(c);
     }
@@ -81,6 +85,13 @@ describe("kolom halaman publik Tahap 2 tetap tanpa kontak", () => {
       expect(["edit_token_hash", "creator_ip_hash", "device_id", "card_snapshot"]).not.toContain(c);
     }
     expect(PUBLIC_TRIP_SELECT).not.toMatch(/contact|token|hash|device|snapshot/);
+  });
+
+  it("Tahap 5: memuat is_full (satu-satunya tambahan), plus type dan end_date untuk status", () => {
+    expect(PUBLIC_TRIP_COLUMNS).toContain("is_full");
+    expect(PUBLIC_TRIP_COLUMNS).toContain("type");
+    expect(PUBLIC_TRIP_COLUMNS).toContain("end_date");
+    expect(PUBLIC_TRIP_SELECT.split(", ")).toEqual([...PUBLIC_TRIP_COLUMNS]);
   });
 });
 

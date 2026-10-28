@@ -25,7 +25,7 @@ export const EDITABLE_COLUMNS = [
 
 /**
  * Kolom yang TIDAK PERNAH diubah edit. Dipakai di uji sebagai pagar:
- * `is_full` milik Tahap 5; `card_snapshot` dan `theme` membuat kartu tidak
+ * `is_full` hanya diubah endpoint status (/api/trips/status), bukan edit; `card_snapshot` dan `theme` membuat kartu tidak
  * ikut berubah; sisanya identitas dan data rahasia.
  */
 export const NON_EDITABLE_COLUMNS = [
@@ -41,8 +41,12 @@ export const NON_EDITABLE_COLUMNS = [
   "updated_at",
 ] as const;
 
-/** Kolom yang dibaca untuk mengisi form edit (kontak ikut: hanya untuk pemegang token). */
-export const EDIT_READ_COLUMNS = ["id", "type", ...EDITABLE_COLUMNS] as const;
+/**
+ * Kolom yang dibaca untuk mengisi halaman edit (kontak ikut: hanya untuk
+ * pemegang token). `is_full` hanya dibaca, untuk bagian "Status trip"; ia
+ * tidak ada di EDITABLE_COLUMNS.
+ */
+export const EDIT_READ_COLUMNS = ["id", "type", ...EDITABLE_COLUMNS, "is_full"] as const;
 
 export const EDIT_READ_SELECT = EDIT_READ_COLUMNS.join(", ");
 
@@ -65,6 +69,7 @@ export type EditableTripRow = {
   month_start: string | null;
   month_end: string | null;
   intention: string | null;
+  is_full: boolean;
 };
 
 /** Isi UPDATE dari hasil validasi: hanya kolom di EDITABLE_COLUMNS. */

@@ -70,3 +70,26 @@ export async function deleteTripByToken(token: string): Promise<boolean> {
   }
   return Array.isArray(data) && data.length > 0;
 }
+
+/**
+ * UPDATE HANYA kolom `is_full` (tandai penuh / buka lagi). Mengembalikan nilai
+ * `is_full` yang tersimpan, atau null bila tidak ada baris yang cocok (token
+ * tidak dikenal atau trip sudah dihapus).
+ */
+export async function setTripFullByToken(
+  token: string,
+  isFull: boolean,
+): Promise<{ isFull: boolean } | null> {
+  const { data, error } = await getSupabaseServer()
+    .from("trips")
+    .update({ is_full: isFull })
+    .eq("edit_token_hash", hashEditToken(token))
+    .select("is_full")
+    .maybeSingle();
+  if (error) {
+    console.error("[setTripFullByToken] update gagal", { code: error.code });
+    throw new Error("Gagal memperbarui status trip.");
+  }
+  if (!data) return null;
+  return { isFull: (data as unknown as { is_full: boolean }).is_full };
+}

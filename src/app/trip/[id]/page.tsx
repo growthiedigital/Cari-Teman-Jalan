@@ -9,6 +9,7 @@ import { getCardDimensions } from "@/lib/card/spec";
 import { TAG_LABELS, type TripType } from "@/lib/trip/constants";
 import { formatBudgetPerPerson, formatTripTime } from "@/lib/trip/format";
 import { getPublicTrip } from "@/lib/trip/queries";
+import { disabledContactLabel, tripStatus } from "@/lib/trip/status";
 import { ReportContactFooter } from "@/components/report-contact-footer";
 
 // Trip bisa diedit/dihapus kapan saja: jangan di-cache statis.
@@ -87,6 +88,8 @@ export default async function TripPage({ params }: PageProps<"/trip/[id]">) {
   if (!trip) notFound();
 
   const badge = TYPE_BADGE[trip.type];
+  // Dihitung saat dirender (halaman dinamis), jadi tidak pernah basi.
+  const status = tripStatus(trip);
   const time = formatTripTime(trip);
   const story = trip.type === "rencana" ? trip.itinerary : trip.intention;
   const storyLabel = trip.type === "rencana" ? "Itinerary" : "Niat singkat";
@@ -95,6 +98,22 @@ export default async function TripPage({ params }: PageProps<"/trip/[id]">) {
     <div className="flex min-h-dvh flex-col">
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-6 px-5 pt-8">
         <header className="flex flex-col gap-3">
+          {(status.isExpired || status.isFull) && (
+            // Kotak bergaris tegas (bukan pil) supaya tidak tertukar dengan
+            // penanda jenis trip di bawahnya.
+            <ul aria-label="Status trip" className="flex flex-wrap gap-2">
+              {status.isExpired && (
+                <li className="rounded-md bg-zinc-800 px-3 py-1.5 text-sm font-bold uppercase tracking-wide text-white dark:bg-zinc-200 dark:text-zinc-900">
+                  Sudah lewat
+                </li>
+              )}
+              {status.isFull && (
+                <li className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-bold uppercase tracking-wide text-white dark:bg-red-500 dark:text-red-950">
+                  Sudah penuh
+                </li>
+              )}
+            </ul>
+          )}
           <span
             className={`w-fit rounded-full px-3 py-1 text-sm font-semibold ${badge.className}`}
           >
@@ -169,13 +188,24 @@ export default async function TripPage({ params }: PageProps<"/trip/[id]">) {
         {/* Tautan biasa (bukan next/link): tidak di-prefetch, jadi tidak
             menyentuh database sebelum diklik. Tanpa nomor/handle di sini. */}
         <div className="sticky bottom-0 -mx-5 mt-auto border-t border-zinc-200 bg-background px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 dark:border-zinc-800">
-          <a
-            href={`/go/${trip.id}`}
-            rel="nofollow"
-            className="flex min-h-14 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 text-lg font-semibold text-white dark:bg-white dark:text-zinc-900"
-          >
-            Tertarik / Hubungi
-          </a>
+          {status.canContact ? (
+            <a
+              href={`/go/${trip.id}`}
+              rel="nofollow"
+              className="flex min-h-14 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 text-lg font-semibold text-white dark:bg-white dark:text-zinc-900"
+            >
+              Tertarik / Hubungi
+            </a>
+          ) : (
+            // Bukan tautan (tanpa href ke /go): trip penuh/lewat tidak bisa dihubungi.
+            <button
+              type="button"
+              aria-disabled="true"
+              className="flex min-h-14 w-full cursor-not-allowed items-center justify-center rounded-xl border-2 border-dashed border-zinc-400 bg-zinc-200 px-4 text-lg font-semibold text-zinc-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+            >
+              {disabledContactLabel(status)}
+            </button>
+          )}
         </div>
       </main>
 

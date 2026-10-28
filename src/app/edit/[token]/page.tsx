@@ -37,6 +37,8 @@ export default async function EditPage({ params }: PageProps<"/edit/[token]">) {
         monthEnd: row.month_end,
       }}
       today={todayJakarta()}
+      nowIso={new Date().toISOString()}
+      isFull={row.is_full}
       months={withStoredMonths(upcomingMonths(), [row.month_start, row.month_end])}
     />
   );
