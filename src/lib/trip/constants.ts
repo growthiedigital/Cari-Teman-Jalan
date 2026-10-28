@@ -3,7 +3,7 @@ export type TripType = (typeof TRIP_TYPES)[number];
 
 export const TRIP_TYPE_LABELS: Record<TripType, string> = {
   rencana: "Sudah ada rencana",
-  niat: "Masih pengen, cari peminat",
+  niat: "Cari peminat",
 };
 
 export const CONTACT_TYPES = ["whatsapp", "instagram"] as const;

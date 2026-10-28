@@ -22,11 +22,9 @@ export function ReportContactFooter({
 
   return (
     <footer className={className}>
-      Ada masalah dengan trip ini atau mau minta dihapus? Hubungi {contact}
+      Ada masalah dengan trip ini atau mau minta dihapus? Hubungi {contact}.
       {lostEditLink && (
-        <>
-          . Kalau link edit hilang, hubungi {contact} untuk minta penghapusan.
-        </>
+        <> Kalau link edit hilang, hubungi {contact} untuk minta penghapusan.</>
       )}
     </footer>
   );

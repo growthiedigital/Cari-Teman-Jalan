@@ -212,7 +212,7 @@ export function TripForm({ today, months }: Props) {
             value={preview.tags.map((t) => TAG_LABELS[t]).join(", ")}
           />
           <PreviewRow
-            label="Jumlah teman dicari"
+            label="Jumlah teman yang dicari"
             value={preview.buddiesWanted ? `${preview.buddiesWanted} orang` : "-"}
           />
           <PreviewRow
@@ -294,7 +294,7 @@ export function TripForm({ today, months }: Props) {
           setValue={setValue}
           startMin={today}
           months={months}
-          contactHint="Tidak ditampilkan di kartu."
+          contactHint="Tidak ditampilkan di kartu maupun halaman trip. Orang menghubungimu lewat tombol Hubungi."
         />
 
         <button type="submit" className={primaryButton}>

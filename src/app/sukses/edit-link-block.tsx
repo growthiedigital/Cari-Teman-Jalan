@@ -60,7 +60,7 @@ export function EditLinkBlock({ id, siteUrl }: Props) {
     <section className="flex flex-col gap-3 rounded-2xl border border-zinc-300 p-4 dark:border-zinc-700">
       <h2 className="text-base font-bold">Link edit (rahasia)</h2>
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Simpan link ini kalau mau mengedit dari perangkat lain
+        Simpan link ini kalau mau mengedit dari perangkat lain.
       </p>
       <p className="break-all rounded-lg bg-zinc-100 px-3 py-2 font-mono text-xs dark:bg-zinc-900">
         {link}
