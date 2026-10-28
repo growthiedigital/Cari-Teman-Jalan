@@ -4,6 +4,9 @@ import { headers } from "next/headers";
 import { siteUrlFromHeaders } from "@/lib/card/site-url";
 import { isValidTripId } from "@/lib/trip/id";
 
+import { ReportContactFooter } from "@/components/report-contact-footer";
+
+import { EditLinkBlock } from "./edit-link-block";
 import { SuccessCard } from "./success-card";
 
 export const metadata = {
@@ -29,6 +32,11 @@ export default async function SuksesPage({
             </span>
           </p>
           <SuccessCard id={tripId} siteUrl={siteUrl} />
+          <EditLinkBlock id={tripId} siteUrl={siteUrl} />
+          <ReportContactFooter
+            lostEditLink
+            className="text-center text-sm text-zinc-500 dark:text-zinc-400"
+          />
         </>
       ) : (
         <>

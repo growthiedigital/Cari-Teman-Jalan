@@ -46,6 +46,14 @@ describe("robots.txt", () => {
     expect(star?.disallow).toEqual(expect.arrayContaining(["/go/", "/trip/"]));
   });
 
+  it("/edit/ (link rahasia) dilarang untuk semua, termasuk crawler pratinjau", () => {
+    expect(star?.disallow).toContain("/edit/");
+    for (const group of groups) {
+      expect(group.disallow, group.agents.join(",")).toContain("/edit/");
+      expect(group.allow.some((path) => path && "/edit/x".startsWith(path))).toBe(false);
+    }
+  });
+
   it("crawler pratinjau (WhatsApp, Meta) boleh membaca /trip/ tetapi tidak /go/", () => {
     for (const agent of ["facebookexternalhit", "meta-externalagent", "whatsapp"]) {
       const group = groups.find((g) => g.agents.includes(agent));

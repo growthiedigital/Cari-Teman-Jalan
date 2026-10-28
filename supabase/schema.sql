@@ -56,6 +56,11 @@ create table if not exists public.trips (
   )
 );
 
+-- pencarian trip dari hash token edit (Tahap 4); satu token = satu trip.
+-- Sama dengan supabase/migrations/001_trips_edit_token_hash_unique.sql.
+create unique index if not exists trips_edit_token_hash_key
+  on public.trips (edit_token_hash);
+
 -- untuk pembatasan 5 trip/hari per IP dan per perangkat (dipakai nanti)
 create index if not exists trips_creator_ip_hash_created_at_idx
   on public.trips (creator_ip_hash, created_at);

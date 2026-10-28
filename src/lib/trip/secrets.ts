@@ -25,6 +25,11 @@ export function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+/** Nilai yang disimpan di `edit_token_hash` untuk sebuah token edit. */
+export function hashEditToken(token: string): string {
+  return sha256Hex(token);
+}
+
 /** IP klien dari x-forwarded-for (elemen pertama, diisi Vercel). */
 export function getClientIp(headers: Headers): string {
   const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();

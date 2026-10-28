@@ -13,6 +13,12 @@ export default function Home() {
       >
         Buat trip
       </Link>
+      <Link
+        href="/trip-saya"
+        className="rounded-xl border border-zinc-300 px-4 py-3.5 text-center text-base font-semibold dark:border-zinc-700"
+      >
+        Trip saya
+      </Link>
     </main>
   );
 }

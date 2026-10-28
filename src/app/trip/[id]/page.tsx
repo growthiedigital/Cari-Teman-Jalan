@@ -9,7 +9,7 @@ import { getCardDimensions } from "@/lib/card/spec";
 import { TAG_LABELS, type TripType } from "@/lib/trip/constants";
 import { formatBudgetPerPerson, formatTripTime } from "@/lib/trip/format";
 import { getPublicTrip } from "@/lib/trip/queries";
-import { resolveReportContact } from "@/lib/report-contact";
+import { ReportContactFooter } from "@/components/report-contact-footer";
 
 // Trip bisa diedit/dihapus kapan saja: jangan di-cache statis.
 export const dynamic = "force-dynamic";
@@ -90,7 +90,6 @@ export default async function TripPage({ params }: PageProps<"/trip/[id]">) {
   const time = formatTripTime(trip);
   const story = trip.type === "rencana" ? trip.itinerary : trip.intention;
   const storyLabel = trip.type === "rencana" ? "Itinerary" : "Niat singkat";
-  const report = resolveReportContact(process.env.NEXT_PUBLIC_REPORT_CONTACT);
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -180,16 +179,7 @@ export default async function TripPage({ params }: PageProps<"/trip/[id]">) {
         </div>
       </main>
 
-      <footer className="mx-auto w-full max-w-lg px-5 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-        Ada masalah dengan trip ini atau mau minta dihapus? Hubungi{" "}
-        {report.href ? (
-          <a href={report.href} className="font-semibold underline">
-            {report.text}
-          </a>
-        ) : (
-          <span className="font-semibold">{report.text}</span>
-        )}
-      </footer>
+      <ReportContactFooter />
     </div>
   );
 }
