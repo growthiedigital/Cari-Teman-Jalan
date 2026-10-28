@@ -2,7 +2,7 @@
 
 Aplikasi web tanpa login untuk orang yang cari teman jalan: isi form singkat, dapat kartu trip untuk dibagikan ke media sosial, dan halaman detail publik dengan tombol Hubungi.
 
-> **Status: Tahap 3 (generator kartu).** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau teks dan pratinjau kartu), penyimpanan ke database lewat `POST /api/trips`, kartu trip berupa gambar PNG (`/api/card/{id}`), layar `/sukses` (unduh gambar, salin link), halaman publik `/trip/{id}` dengan pratinjau link (Open Graph), dan tombol Hubungi lewat `/go/{id}`. Edit, "Trip saya", dan analytics dibuat di tahap berikutnya.
+> **Status: Tahap 4 (edit dan hapus tanpa login).** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau teks dan pratinjau kartu), penyimpanan ke database lewat `POST /api/trips`, kartu trip berupa gambar PNG (`/api/card/{id}`), layar `/sukses` (unduh gambar, salin link, link edit rahasia), halaman publik `/trip/{id}` dengan pratinjau link (Open Graph), tombol Hubungi lewat `/go/{id}`, "Trip saya" (`/trip-saya`), serta edit dan hapus trip lewat link rahasia `/edit/{token}`. Status "Sudah penuh/lewat" dan analytics dibuat di tahap berikutnya.
 
 Dibangun dengan Next.js (App Router, TypeScript, Tailwind), dideploy di Vercel, dengan Supabase sebagai database Postgres.
 
@@ -158,6 +158,16 @@ curl -s https://URL/trip/ID | grep -o '<meta[^>]*og:[^>]*>'
 ```
 
 Pratinjau link WhatsApp/Instagram di-cache oleh aplikasinya. Gunakan trip baru saat mengecek; untuk memaksa muat ulang di Facebook/Instagram bisa memakai Sharing Debugger Meta.
+
+### Tahap 4: cara kerja singkat
+
+**Langkah wajib untuk Billy: jalankan migrasi SQL satu kali.** Buka Supabase > **SQL Editor** > **New query**, salin seluruh isi [`supabase/migrations/001_trips_edit_token_hash_unique.sql`](supabase/migrations/001_trips_edit_token_hash_unique.sql), tempel, klik **Run**. Hasil yang benar: `Success. No rows returned`. Isinya satu pernyataan: `create unique index if not exists trips_edit_token_hash_key on public.trips (edit_token_hash);` (aman dijalankan ulang; proyek baru yang menjalankan `schema.sql` terbaru sudah memilikinya).
+
+- **Link edit** `{situs}/edit/{token}` (token 43 karakter). Server menghitung SHA-256 token lalu mencocokkan `edit_token_hash`; token mentah tidak disimpan, tidak masuk log, dan tidak ada di halaman publik. Halaman edit dan responsnya: `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer` (di `next.config.ts`), meta `noindex`, dan `/edit/` dilarang di `public/robots.txt`.
+- **`/sukses`** menampilkan link edit dengan tombol "Salin link edit". Token dibaca dari localStorage `tripcard:mytrips` (bukan dari URL), dengan cadangan di `sessionStorage` (`tripcard:lastcreated`). Bila keduanya gagal, tampil peringatan dan footer kontak untuk minta penghapusan.
+- **`/trip-saya`**: daftar dari localStorage saja (tanpa panggilan server); ada tautannya di halaman awal. Entri yang trip-nya sudah dihapus (halaman edit 404) bisa dibuang lewat "Hapus dari daftar di perangkat ini".
+- **Edit** (`/edit/[token]`): memakai skema dan kolom isian yang sama dengan `/buat` (`validateTripEdit` di `src/lib/trip/schema.ts`, `TripFields` di `src/components/trip-fields.tsx`). Jenis trip tidak bisa diubah. Tanggal berangkat/bulan awal (dan pulang/akhir) hanya dicek "tidak di masa lalu" bila nilainya berubah. `POST /api/trips/edit` (token di body) hanya meng-UPDATE kolom di `EDITABLE_COLUMNS` (`src/lib/trip/edit-columns.ts`); `card_snapshot`, `theme`, `is_full`, hash, dan `device_id` tidak pernah disentuh, jadi kartu tidak ikut berubah.
+- **Hapus**: `POST /api/trips/delete` (token di body) menghapus permanen baris `trips`; baris `events` tidak disentuh. Setelah itu `/trip/{id}`, `/go/{id}`, dan `/api/card/{id}` memberi 404. Gambar kartu di cache CDN (`s-maxage=3600`) bisa masih tampil hingga sekitar satu jam; strategi cache tidak diubah.
 
 ### Menguji validasi server dengan curl
 

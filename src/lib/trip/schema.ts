@@ -229,13 +229,23 @@ const budgetField = custom<number | null>((value) => {
   return ok(n);
 });
 
-function requiredDate(label: string, today: string, pastMessage: string) {
+/**
+ * `unchanged`: nilai yang sudah tersimpan (mode edit). Nilai yang sama persis
+ * dengannya lolos walau sudah lewat, supaya trip yang sedang berjalan tetap
+ * bisa diedit; nilai lain tetap tidak boleh di masa lalu.
+ */
+function requiredDate(
+  label: string,
+  today: string,
+  pastMessage: string,
+  unchanged: string | null = null,
+) {
   return custom<string>((value) => {
     const text = toTrimmed(value);
     if (typeof text !== "string") return fail(`${label} tidak valid.`);
     if (text === "") return fail(`${label} wajib diisi.`);
     if (!isValidDateString(text)) return fail(`${label} tidak valid.`);
-    if (text < today) return fail(pastMessage);
+    if (text < today && text !== unchanged) return fail(pastMessage);
     return ok(text);
   });
 }
@@ -253,6 +263,7 @@ function monthField(
   required: boolean,
   currentMonth: string,
   pastMessage: string,
+  unchanged: string | null = null,
 ) {
   return custom<string | null>((value) => {
     const raw = toTrimmed(value);
@@ -260,7 +271,7 @@ function monthField(
     if (raw === "") return required ? fail(`${label} wajib diisi.`) : ok(null);
     const month = parseMonth(raw);
     if (month === null) return fail(`${label} tidak valid.`);
-    if (month < currentMonth) return fail(pastMessage);
+    if (month < currentMonth && month !== unchanged) return fail(pastMessage);
     return ok(month);
   });
 }
@@ -289,29 +300,53 @@ function firstMessage(result: { success: boolean; error?: z.ZodError }): string 
 }
 
 /**
- * Validasi + normalisasi satu isian trip. `now` hanya dipakai untuk acuan
- * "hari ini" (zona Asia/Jakarta) dan bisa diganti di uji.
- *
- * Tiap field divalidasi terpisah supaya semua pesan error muncul sekaligus,
- * termasuk pemeriksaan antar-field (tanggal pulang vs berangkat).
+ * Isian yang sudah tersimpan dan relevan bagi mode edit: jenis trip (tidak
+ * bisa diubah) dan waktu (nilai lama tetap boleh walau sudah lewat).
  */
-export function validateTrip(raw: unknown, now: Date = new Date()): ValidationResult {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, errors: { form: "Data yang dikirim tidak valid." } };
-  }
-  const input = raw as Record<string, unknown>;
-  const errors: TripErrors = {};
+export type StoredTripTiming = {
+  type: TripType;
+  startDate: string | null;
+  endDate: string | null;
+  monthStart: string | null;
+  monthEnd: string | null;
+};
+
+/** Hasil validasi mode edit: tanpa tema dan ID perangkat (tidak bisa diedit). */
+export type TripEditInput = Omit<TripInput, "theme" | "deviceId">;
+
+export type EditValidationResult =
+  | { ok: true; data: TripEditInput }
+  | { ok: false; errors: TripErrors };
+
+/**
+ * Validasi isian yang sama untuk pembuatan dan edit; `stored` hanya diisi di
+ * mode edit. Tiap field divalidasi terpisah supaya semua pesan error muncul
+ * sekaligus, termasuk pemeriksaan antar-field (tanggal pulang vs berangkat).
+ * Pesan error ditambahkan ke `errors`; hasilnya hanya berarti bila `errors`
+ * tetap kosong.
+ */
+function validateCore(
+  input: Record<string, unknown>,
+  errors: TripErrors,
+  now: Date,
+  stored?: StoredTripTiming,
+): TripEditInput {
   const today = todayJakarta(now);
   const thisMonth = currentMonthJakarta(now);
+  const run = makeRun(input, errors);
 
-  function run<T>(field: TripField, schema: z.ZodType<T>): T | undefined {
-    const result = schema.safeParse(input[field]);
-    if (result.success) return result.data;
-    errors[field] = firstMessage(result);
-    return undefined;
+  let type: TripType | undefined;
+  if (stored) {
+    // Jenis trip tetap. Boleh tidak dikirim; bila dikirim harus sama.
+    type = stored.type;
+    const sent = input.type;
+    if (sent !== undefined && sent !== null && sent !== "" && sent !== stored.type) {
+      errors.type = "Jenis trip tidak bisa diubah.";
+    }
+  } else {
+    type = run("type", typeField);
   }
 
-  const type = run("type", typeField);
   const destination = run("destination", requiredText("Tujuan", LIMITS.destination));
   const titleInput = run("title", optionalText("Judul", LIMITS.title));
   const creatorName = run("creatorName", requiredText("Nama", LIMITS.creatorName));
@@ -319,8 +354,6 @@ export function validateTrip(raw: unknown, now: Date = new Date()): ValidationRe
   const buddiesWanted = run("buddiesWanted", buddiesField);
   const note = run("note", optionalText("Catatan", LIMITS.note));
   const budget = run("budget", budgetField);
-  const theme = run("theme", themeField);
-  const deviceId = run("deviceId", deviceIdField);
 
   // Kontak: aturan nilai bergantung pada jenis kontak.
   const contactType = run("contactType", contactTypeField);
@@ -349,11 +382,21 @@ export function validateTrip(raw: unknown, now: Date = new Date()): ValidationRe
   if (type === "rencana") {
     const start = run(
       "startDate",
-      requiredDate("Tanggal berangkat", today, "Tanggal berangkat tidak boleh di masa lalu."),
+      requiredDate(
+        "Tanggal berangkat",
+        today,
+        "Tanggal berangkat tidak boleh di masa lalu.",
+        stored?.startDate,
+      ),
     );
     const end = run(
       "endDate",
-      requiredDate("Tanggal pulang", today, "Tanggal pulang tidak boleh di masa lalu."),
+      requiredDate(
+        "Tanggal pulang",
+        today,
+        "Tanggal pulang tidak boleh di masa lalu.",
+        stored?.endDate,
+      ),
     );
     if (start && end && end < start) {
       errors.endDate = "Tanggal pulang tidak boleh sebelum tanggal berangkat.";
@@ -364,11 +407,23 @@ export function validateTrip(raw: unknown, now: Date = new Date()): ValidationRe
   } else if (type === "niat") {
     const start = run(
       "monthStart",
-      monthField("Bulan awal", true, thisMonth, "Bulan awal tidak boleh di masa lalu."),
+      monthField(
+        "Bulan awal",
+        true,
+        thisMonth,
+        "Bulan awal tidak boleh di masa lalu.",
+        stored?.monthStart,
+      ),
     );
     const end = run(
       "monthEnd",
-      monthField("Bulan akhir", false, thisMonth, "Bulan akhir tidak boleh di masa lalu."),
+      monthField(
+        "Bulan akhir",
+        false,
+        thisMonth,
+        "Bulan akhir tidak boleh di masa lalu.",
+        stored?.monthEnd,
+      ),
     );
     if (start && end && end < start) {
       errors.monthEnd = "Bulan akhir tidak boleh sebelum bulan awal.";
@@ -378,31 +433,77 @@ export function validateTrip(raw: unknown, now: Date = new Date()): ValidationRe
     intention = run("intention", optionalText("Niat singkat", LIMITS.intention)) ?? null;
   }
 
-  if (Object.keys(errors).length > 0) return { ok: false, errors };
-
-  // Semua field lolos, jadi nilai-nilai di bawah pasti terisi.
+  // Dibaca hanya bila tidak ada error; di sana semua field di bawah pasti terisi.
   const dest = destination as string;
   return {
-    ok: true,
-    data: {
-      type: type as TripType,
-      destination: dest,
-      title: titleInput ?? `Trip ke ${dest}`,
-      creatorName: creatorName as string,
-      tags: tags as TagValue[],
-      buddiesWanted: buddiesWanted ?? null,
-      note: note ?? null,
-      budget: budget ?? null,
-      contactType: contactType as ContactType,
-      contactValue: contactValue as string,
-      startDate,
-      endDate,
-      itinerary,
-      monthStart,
-      monthEnd,
-      intention,
-      theme: theme as CardTheme,
-      deviceId: deviceId as string,
-    },
+    type: type as TripType,
+    destination: dest,
+    title: titleInput ?? `Trip ke ${dest}`,
+    creatorName: creatorName as string,
+    tags: tags as TagValue[],
+    buddiesWanted: buddiesWanted ?? null,
+    note: note ?? null,
+    budget: budget ?? null,
+    contactType: contactType as ContactType,
+    contactValue: contactValue as string,
+    startDate,
+    endDate,
+    itinerary,
+    monthStart,
+    monthEnd,
+    intention,
   };
+}
+
+function makeRun(input: Record<string, unknown>, errors: TripErrors) {
+  return function run<T>(field: TripField, schema: z.ZodType<T>): T | undefined {
+    const result = schema.safeParse(input[field]);
+    if (result.success) return result.data;
+    errors[field] = firstMessage(result);
+    return undefined;
+  };
+}
+
+const NOT_OBJECT: TripErrors = { form: "Data yang dikirim tidak valid." };
+
+function isRecord(raw: unknown): raw is Record<string, unknown> {
+  return typeof raw === "object" && raw !== null && !Array.isArray(raw);
+}
+
+/**
+ * Validasi + normalisasi satu isian trip baru. `now` hanya dipakai untuk
+ * acuan "hari ini" (zona Asia/Jakarta) dan bisa diganti di uji.
+ */
+export function validateTrip(raw: unknown, now: Date = new Date()): ValidationResult {
+  if (!isRecord(raw)) return { ok: false, errors: { ...NOT_OBJECT } };
+  const errors: TripErrors = {};
+  const run = makeRun(raw, errors);
+
+  const core = validateCore(raw, errors, now);
+  const theme = run("theme", themeField);
+  const deviceId = run("deviceId", deviceIdField);
+
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    data: { ...core, theme: theme as CardTheme, deviceId: deviceId as string },
+  };
+}
+
+/**
+ * Validasi isian edit. Aturannya sama dengan pembuatan, dengan tiga beda:
+ * jenis trip tetap (sama dengan `stored.type`), waktu yang tidak berubah dari
+ * `stored` boleh sudah lewat, dan `theme`/`deviceId` (juga field lain di luar
+ * daftar isian) diabaikan sehingga tidak pernah ikut tersimpan.
+ */
+export function validateTripEdit(
+  raw: unknown,
+  stored: StoredTripTiming,
+  now: Date = new Date(),
+): EditValidationResult {
+  if (!isRecord(raw)) return { ok: false, errors: { ...NOT_OBJECT } };
+  const errors: TripErrors = {};
+  const core = validateCore(raw, errors, now, stored);
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+  return { ok: true, data: core };
 }

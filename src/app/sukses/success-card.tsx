@@ -7,6 +7,7 @@ import { useState } from "react";
 import { RatioToggle } from "@/components/ratio-toggle";
 import { DEFAULT_RATIO, type CardRatio } from "@/lib/card/spec";
 import { tripUrl } from "@/lib/card/site-url";
+import { copyText } from "@/lib/copy-text";
 
 type Props = {
   id: string;
@@ -14,33 +15,6 @@ type Props = {
 };
 
 const COPIED_MS = 2000;
-
-/** Salin teks; `navigator.clipboard` bila ada (butuh HTTPS), kalau tidak `execCommand`. */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // jatuh ke cara lama di bawah
-  }
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  document.body.appendChild(area);
-  area.select();
-  area.setSelectionRange(0, text.length);
-  try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    document.body.removeChild(area);
-  }
-}
 
 const primaryButton =
   "flex w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3.5 text-center text-base font-semibold text-white dark:bg-white dark:text-zinc-900";

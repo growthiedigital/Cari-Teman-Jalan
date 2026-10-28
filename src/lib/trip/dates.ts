@@ -76,3 +76,20 @@ export function formatMonthId(value: string): string {
 export function formatRupiah(value: number): string {
   return `Rp${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
 }
+
+/**
+ * Gabungkan pilihan bulan dengan bulan yang sudah tersimpan (mode edit), supaya
+ * bulan lama yang sudah lewat tetap muncul dan terpilih. Hasil terurut.
+ */
+export function withStoredMonths(
+  options: { value: string; label: string }[],
+  stored: (string | null)[],
+): { value: string; label: string }[] {
+  const byValue = new Map(options.map((o) => [o.value, o]));
+  for (const value of stored) {
+    if (value && !byValue.has(value)) {
+      byValue.set(value, { value, label: formatMonthId(value) });
+    }
+  }
+  return [...byValue.values()].sort((a, b) => a.value.localeCompare(b.value));
+}
