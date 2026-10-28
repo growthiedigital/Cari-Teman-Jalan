@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 
+import { sendEvent } from "@/lib/analytics/send-event";
 import {
   TripFields,
   focusFirstError,
@@ -65,7 +66,15 @@ export function TripForm({ today, months }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // `form_opened` dicatat sekali per pemuatan halaman: jenis pertama yang
+  // dipilih; berpindah jenis tidak mencatat ulang.
+  const formOpenedSent = useRef(false);
+
   function chooseType(next: TripType) {
+    if (!formOpenedSent.current) {
+      formOpenedSent.current = true;
+      sendEvent({ event: "form_opened", tripType: next });
+    }
     setType(next);
     setStep("form");
     window.scrollTo(0, 0);

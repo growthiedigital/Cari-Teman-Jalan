@@ -12,6 +12,8 @@ import { getPublicTrip } from "@/lib/trip/queries";
 import { disabledContactLabel, tripStatus } from "@/lib/trip/status";
 import { ReportContactFooter } from "@/components/report-contact-footer";
 
+import { DetailViewedBeacon } from "./detail-viewed-beacon";
+
 // Trip bisa diedit/dihapus kapan saja: jangan di-cache statis.
 export const dynamic = "force-dynamic";
 
@@ -210,6 +212,7 @@ export default async function TripPage({ params }: PageProps<"/trip/[id]">) {
       </main>
 
       <ReportContactFooter />
+      <DetailViewedBeacon tripId={trip.id} />
     </div>
   );
 }

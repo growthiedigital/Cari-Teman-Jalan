@@ -30,10 +30,18 @@ export function hashEditToken(token: string): string {
   return sha256Hex(token);
 }
 
-/** IP klien dari x-forwarded-for (elemen pertama, diisi Vercel). */
-export function getClientIp(headers: Headers): string {
+/**
+ * IP klien dari x-forwarded-for (elemen pertama, diisi Vercel); null bila tidak
+ * bisa ditentukan.
+ */
+export function getKnownClientIp(headers: Headers): string | null {
   const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || headers.get("x-real-ip")?.trim() || "unknown";
+  return forwarded || headers.get("x-real-ip")?.trim() || null;
+}
+
+/** Seperti `getKnownClientIp`, tetapi "unknown" bila IP tidak diketahui. */
+export function getClientIp(headers: Headers): string {
+  return getKnownClientIp(headers) ?? "unknown";
 }
 
 /** SHA-256 dari (IP + IP_HASH_SALT). Melempar bila salt belum diisi. */

@@ -1,16 +1,17 @@
 import { PNG } from "pngjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { maybeSingle, eq, select, from, getSupabaseServer } = vi.hoisted(() => {
+const { maybeSingle, eq, select, from, getSupabaseServer, recordEventAfter } = vi.hoisted(() => {
   const maybeSingle = vi.fn();
   const eq = vi.fn(() => ({ maybeSingle }));
   const select = vi.fn(() => ({ eq }));
   const from = vi.fn(() => ({ select }));
   const getSupabaseServer = vi.fn(() => ({ from }));
-  return { maybeSingle, eq, select, from, getSupabaseServer };
+  return { maybeSingle, eq, select, from, getSupabaseServer, recordEventAfter: vi.fn() };
 });
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseServer }));
+vi.mock("@/lib/analytics/record-event", () => ({ recordEventAfter }));
 
 import { GET } from "./route";
 
@@ -28,8 +29,11 @@ const SNAPSHOT = {
   theme: "a",
 };
 
-const call = (id: string, query = "") =>
-  GET(new Request(`https://situs.test/api/card/${id}${query}`), {
+const CHROME =
+  "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
+
+const call = (id: string, query = "", headers: Record<string, string> = { "user-agent": CHROME }) =>
+  GET(new Request(`https://situs.test/api/card/${id}${query}`, { headers }), {
     params: Promise.resolve({ id }),
   } as never);
 
@@ -39,6 +43,7 @@ beforeEach(() => {
   select.mockClear();
   from.mockClear();
   getSupabaseServer.mockClear();
+  recordEventAfter.mockClear();
   delete process.env.NEXT_PUBLIC_SITE_URL;
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -118,5 +123,65 @@ describe("GET /api/card/[id]: dengan database tiruan", () => {
     expect(res.headers.get("content-disposition")).toBeNull();
     const png = PNG.sync.read(Buffer.from(await res.arrayBuffer()));
     expect([png.width, png.height]).toEqual([1080, 1350]);
+  });
+});
+
+describe("GET /api/card/[id]: analytics card_downloaded", () => {
+  const CACHED = "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400";
+  beforeEach(() => {
+    maybeSingle.mockResolvedValue({ data: { card_snapshot: SNAPSHOT }, error: null });
+  });
+
+  it("download=1 sukses -> mencatat satu event dan memakai no-store", async () => {
+    const res = await call(ID, "?r=4x5&download=1");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("content-disposition")).toContain("attachment");
+    expect(recordEventAfter).toHaveBeenCalledOnce();
+    expect(recordEventAfter).toHaveBeenCalledWith({
+      event: "card_downloaded",
+      tripType: "rencana",
+      tripId: ID,
+    });
+    await res.arrayBuffer();
+  });
+
+  it("jenis niat tercatat sebagai niat", async () => {
+    maybeSingle.mockResolvedValue({
+      data: { card_snapshot: { ...SNAPSHOT, type: "niat", start_date: null, end_date: null, month_start: "2026-12-01" } },
+      error: null,
+    });
+    const res = await call(ID, "?download=1");
+    expect(recordEventAfter).toHaveBeenCalledWith(expect.objectContaining({ tripType: "niat" }));
+    await res.arrayBuffer();
+  });
+
+  it("varian OG, tampilan di halaman, dan download selain 1 -> cache lama dan tidak mencatat", async () => {
+    for (const query of ["", "?r=9x16", "?r=4x5&size=og", "?download=0", "?size=og&download=true"]) {
+      const res = await call(ID, query);
+      expect(res.status, query).toBe(200);
+      expect(res.headers.get("cache-control"), query).toBe(CACHED);
+      await res.arrayBuffer();
+    }
+    expect(recordEventAfter).not.toHaveBeenCalled();
+  });
+
+  it("gagal (404, 400, 500) -> tidak mencatat", async () => {
+    maybeSingle.mockResolvedValue({ data: null, error: null });
+    await call(ID, "?download=1");
+    await call("ngawur", "?download=1");
+    await call(ID, "?r=1x1&download=1");
+    maybeSingle.mockResolvedValue({ data: null, error: { code: "XX000" } });
+    await call(ID, "?download=1");
+    expect(recordEventAfter).not.toHaveBeenCalled();
+  });
+
+  it("bot / UA kosong mengunduh -> gambar tetap dikirim tetapi tidak dicatat", async () => {
+    for (const ua of ["WhatsApp/2.23.20.0 A", "curl/8.4.0", ""]) {
+      const res = await call(ID, "?download=1", { "user-agent": ua });
+      expect(res.status).toBe(200);
+      await res.arrayBuffer();
+    }
+    expect(recordEventAfter).not.toHaveBeenCalled();
   });
 });

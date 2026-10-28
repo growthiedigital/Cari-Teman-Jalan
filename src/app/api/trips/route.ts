@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 
+import { recordEventAfter } from "@/lib/analytics/record-event";
 import { buildCardSnapshot } from "@/lib/card/snapshot";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { checkTripLimit, TRIP_LIMIT_MESSAGE } from "@/lib/trip/rate-limit";
 import { validateTrip, type TripInput } from "@/lib/trip/schema";
 import {
   generateEditToken,
   generateTripId,
-  getClientIp,
+  getKnownClientIp,
   hashIp,
   sha256Hex,
 } from "@/lib/trip/secrets";
@@ -86,7 +88,25 @@ export async function POST(request: Request) {
   //    hanya memuat kode kasar (tanpa kontak, token, atau isi baris).
   try {
     const supabase = getSupabaseServer();
-    const creatorIpHash = hashIp(getClientIp(request.headers));
+    // IP tidak diketahui: tetap disimpan sebagai hash "unknown" (seperti
+    // sebelumnya), tetapi TIDAK dipakai untuk menghitung batas.
+    const clientIp = getKnownClientIp(request.headers);
+    const creatorIpHash = hashIp(clientIp ?? "unknown");
+
+    const limit = await checkTripLimit(supabase, {
+      ipHash: clientIp ? creatorIpHash : null,
+      deviceId: result.data.deviceId,
+    });
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { message: TRIP_LIMIT_MESSAGE },
+        {
+          status: 429,
+          headers: { ...NO_STORE, "Retry-After": String(limit.retryAfterSeconds) },
+        },
+      );
+    }
+
     const editToken = generateEditToken();
     const editTokenHash = sha256Hex(editToken);
 
@@ -96,7 +116,11 @@ export async function POST(request: Request) {
         .from("trips")
         .insert(buildRow(result.data, id, editTokenHash, creatorIpHash));
 
-      if (!error) return json({ id, editToken }, 201);
+      if (!error) {
+        // Hanya setelah insert berhasil; penolakan (400/429) tidak dicatat.
+        recordEventAfter({ event: "trip_created", tripType: result.data.type, tripId: id });
+        return json({ id, editToken }, 201);
+      }
       if (error.code !== "23505") {
         console.error("[POST /api/trips] insert gagal", { code: error.code });
         return json({ message: GENERIC_ERROR }, 500);
