@@ -90,10 +90,6 @@ export function getCardLayout(ratio: CardRatio): CardLayout {
   return { padding: { top: 84, bottom: 84, side: 84 }, qr: 250, gap: 36 };
 }
 
-export function getCardPadding(ratio: CardRatio): CardPadding {
-  return getCardLayout(ratio).padding;
-}
-
 // ---------------------------------------------------------------------------
 // Teks: tingkatan ukuran font dan batas baris (satuan dasar)
 // ---------------------------------------------------------------------------
