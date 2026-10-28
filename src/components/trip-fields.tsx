@@ -258,7 +258,7 @@ export function TripFields({
       <div className="flex flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-2">
           <span id="l-tags" className="text-sm font-semibold">
-            Selera trip
+            Tag selera
           </span>
           <span className="text-xs text-zinc-500">
             {values.tags.length}/{LIMITS.tagsMax} dipilih
@@ -356,7 +356,7 @@ export function TripFields({
             rows={3}
             value={values.intention}
             onChange={(e) => setValue("intention", e.target.value)}
-            placeholder="mis. Pengen healing ke pantai, santai aja"
+            placeholder="mis. Pengin healing ke pantai, santai aja"
             aria-invalid={!!err("intention")}
             aria-describedby={describe("intention")}
             className={inputClass(err("intention"))}

@@ -55,9 +55,9 @@ describe("formatTripTime", () => {
 
 describe("formatBudgetPerPerson", () => {
   it("rupiah per orang", () => {
-    expect(formatBudgetPerPerson(2_500_000)).toBe("Rp 2.500.000 / orang");
-    expect(formatBudgetPerPerson(750_000)).toBe("Rp 750.000 / orang");
-    expect(formatBudgetPerPerson(0)).toBe("Rp 0 / orang");
+    expect(formatBudgetPerPerson(2_500_000)).toBe("Rp2.500.000 / orang");
+    expect(formatBudgetPerPerson(750_000)).toBe("Rp750.000 / orang");
+    expect(formatBudgetPerPerson(0)).toBe("Rp0 / orang");
   });
 });
 

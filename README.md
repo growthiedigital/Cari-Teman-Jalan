@@ -2,9 +2,7 @@
 
 Aplikasi web tanpa login untuk orang yang cari teman jalan: isi form singkat, dapat kartu trip untuk dibagikan ke media sosial, dan halaman detail publik dengan tombol Hubungi.
 
-> **Status: Tahap 6 (perlindungan dasar + analytics).** Sejak Tahap 6, satu perangkat/IP dibatasi 5 trip per 24 jam dan enam event analytics tanpa data pribadi dicatat ke tabel `events` (lihat bagian "Tahap 6"). Ringkasan Tahap 5:
->
-> **Tahap 5 (status trip: "Sudah lewat" otomatis dan "Sudah penuh").** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau teks dan pratinjau kartu), penyimpanan ke database lewat `POST /api/trips`, kartu trip berupa gambar PNG (`/api/card/{id}`), layar `/sukses` (unduh gambar, salin link, link edit rahasia), halaman publik `/trip/{id}` dengan pratinjau link (Open Graph), tombol Hubungi lewat `/go/{id}`, "Trip saya" (`/trip-saya`), serta edit dan hapus trip lewat link rahasia `/edit/{token}`. Sejak Tahap 5, trip bisa ditandai "Sudah penuh" dan trip rencana yang tanggal pulangnya lewat otomatis "Sudah lewat".
+> **Status: v1 selesai, audit akhir (Tahap 7) sudah dilakukan.** Hasil audit, daftar route, dan temuan ada di [`docs/audit-v1.md`](docs/audit-v1.md). Riwayat cara kerja per tahap ada di bagian "Catatan teknis" di bawah.
 
 Dibangun dengan Next.js (App Router, TypeScript, Tailwind), dideploy di Vercel, dengan Supabase sebagai database Postgres.
 
@@ -22,12 +20,17 @@ Dibangun dengan Next.js (App Router, TypeScript, Tailwind), dideploy di Vercel, 
 
 ### B. Jalankan skema database
 
+Urutannya penting: **`schema.sql` dulu, baru semua file di `supabase/migrations/` berurutan menurut nomornya.**
+
 1. Di dashboard Supabase, buka **SQL Editor** (menu kiri) > **New query**.
-2. Buka file [`supabase/schema.sql`](supabase/schema.sql) di GitHub, salin seluruh isinya, tempel ke SQL Editor.
-3. Klik **Run**. Hasil yang benar: `Success. No rows returned`.
+2. Buka file [`supabase/schema.sql`](supabase/schema.sql) di GitHub, salin seluruh isinya, tempel ke SQL Editor, klik **Run**. Hasil yang benar: `Success. No rows returned`.
+3. Buka **New query** lagi, lalu jalankan satu per satu (urut nomor) setiap file di folder [`supabase/migrations/`](supabase/migrations/). Saat ini hanya ada satu: [`001_trips_edit_token_hash_unique.sql`](supabase/migrations/001_trips_edit_token_hash_unique.sql) (indeks unik untuk link edit). Hasil yang benar: `Success. No rows returned`.
+   - Proyek **baru**: `schema.sql` terbaru sudah memuat isi migrasi itu, jadi menjalankannya tidak mengubah apa-apa. Tetap jalankan supaya urutannya selalu lengkap.
+   - Proyek **lama** (dibuat sebelum Tahap 4): migrasi 001 wajib dijalankan.
+   - Kalau kelak ada migrasi baru (nomor lebih besar), jalankan juga, berurutan.
 4. Buka **Table Editor**: tabel `trips` dan `events` harus sudah ada. Di samping namanya akan terlihat penanda RLS aktif.
 
-File ini aman dijalankan ulang kalau diperlukan.
+Semua file ini aman dijalankan ulang.
 
 ### C. Ambil URL dan service role key
 
@@ -42,43 +45,32 @@ File ini aman dijalankan ulang kalau diperlukan.
 
 1. Buka <https://vercel.com>, masuk dengan GitHub, klik **Add New… > Project**.
 2. Pilih repo **Cari-Teman-Jalan** lalu **Import**. Framework akan terdeteksi sebagai **Next.js** (biarkan pengaturan bawaan).
-3. Buka bagian **Environment Variables** dan tambahkan tiga variabel ini:
+3. Buka bagian **Environment Variables** dan tambahkan semua variabel di bawah ini. Daftar ini lengkap: tidak ada variabel lain yang dibaca aplikasi.
 
-   | Nama | Isi |
-   | --- | --- |
-   | `SUPABASE_URL` | Project URL dari langkah C |
-   | `SUPABASE_SERVICE_ROLE_KEY` | service role key dari langkah C |
-   | `IP_HASH_SALT` | string acak panjang (minimal 32 karakter), buat sendiri, mis. dari password manager. Jangan dibagikan. |
+   | Nama | Wajib? | Fungsi | Isi |
+   | --- | --- | --- | --- |
+   | `SUPABASE_URL` | Wajib | Alamat proyek Supabase untuk koneksi dari server. | Project URL dari langkah C |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Wajib, **rahasia** | Kunci server untuk membaca/menulis database. Hanya dipakai di server. | service role key dari langkah C |
+   | `IP_HASH_SALT` | Wajib, **rahasia** | "Garam" untuk menyamarkan IP pembuat trip (disimpan sebagai hash, bukan IP asli) yang dipakai batas 5 trip per 24 jam. Kalau nilainya diganti, hitungan batas yang lama tidak cocok lagi (batas ter-reset); tidak ada akibat lain. | String acak panjang, minimal 32 karakter, buat sendiri (mis. dari password manager) |
+   | `NEXT_PUBLIC_REPORT_CONTACT` | Sangat dianjurkan | Kontak untuk lapor atau minta hapus trip; tampil di footer halaman trip dan layar sukses. Jika berisi email, otomatis jadi tautan `mailto:`. Jika **dikosongkan**, semua pengunjung melihat tulisan `[kontak belum diatur]`. | mis. `halo@contoh.com` |
+   | `NEXT_PUBLIC_SITE_URL` | Opsional | Alamat situs untuk QR di kartu, tombol "Salin link", dan gambar pratinjau link. Isi **hanya** bila memakai domain kustom. Jika dikosongkan, dipakai alamat yang sedang dibuka (mis. `https://cari-teman-jalan.vercel.app`), yang sudah benar selama belum ada domain kustom. | Alamat tanpa garis miring akhir, mis. `https://tripcard.id` |
 
-   Jangan memberi awalan `NEXT_PUBLIC_` pada ketiganya.
-
-   Tambahkan juga satu variabel publik untuk footer halaman trip (tahap 2):
-
-   | Nama | Isi |
-   | --- | --- |
-   | `NEXT_PUBLIC_REPORT_CONTACT` | Kontak untuk lapor/minta hapus trip, mis. email `halo@contoh.com`. Jika berisi `@` otomatis jadi tautan email. Jika dikosongkan, footer menampilkan "[kontak belum diatur]". |
-
-   Opsional, hanya bila memakai **domain kustom** (tahap 3):
-
-   | Nama | Isi |
-   | --- | --- |
-   | `NEXT_PUBLIC_SITE_URL` | Alamat situs tanpa garis miring akhir, mis. `https://tripcard.id`. Dipakai untuk QR di kartu, tombol "Salin link", dan gambar pratinjau link. Jika dikosongkan, dipakai alamat yang sedang dibuka (mis. `https://cari-teman-jalan.vercel.app`), yang sudah benar selama kamu belum memakai domain kustom. |
-
-   Variabel berawalan `NEXT_PUBLIC_` **ditanam saat build**, jadi setelah mengisi atau mengubahnya wajib **Redeploy**. Isinya memang publik; jangan isi rahasia.
+   - Jangan memberi awalan `NEXT_PUBLIC_` pada `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, atau `IP_HASH_SALT`: variabel berawalan itu ikut terkirim ke browser.
+   - Variabel `NEXT_PUBLIC_*` **ditanam saat build**, jadi setelah mengisi atau mengubahnya wajib **Redeploy**. Isinya memang publik; jangan isi rahasia.
 4. Klik **Deploy**. Setelah selesai, Vercel memberi URL seperti `https://cari-teman-jalan.vercel.app`.
 
-Jika kamu mengubah Environment Variables setelah deploy, lakukan **Redeploy** (Deployments > menu `…` > Redeploy) supaya nilainya terbaca.
+Jika kamu mengubah Environment Variables apa pun setelah deploy, lakukan **Redeploy** (Deployments > menu `…` > Redeploy) supaya nilainya terbaca.
 
 ### E. Cara mengecek
 
-1. **Halaman awal.** Buka URL Vercel di HP. Harus tampil judul "Trip Card" dan tulisan bahwa aplikasi sedang disiapkan.
+1. **Halaman awal.** Buka URL Vercel di HP. Harus tampil judul "Trip Card", kalimat singkat tentang kartu trip, serta tombol "Buat trip" dan "Trip saya".
 2. **Kesehatan.** Buka `URL-VERCEL/api/health`. Hasil yang benar:
 
    ```json
    { "ok": true, "db": true }
    ```
 
-   Jika `db: false` (status 503), cek kembali ketiga Environment Variables dan pastikan langkah B sudah dijalankan, lalu Redeploy.
+   Jika `db: false` (status 503), cek kembali `SUPABASE_URL` dan `SUPABASE_SERVICE_ROLE_KEY` dan pastikan langkah B sudah dijalankan, lalu Redeploy. Perhatian: pemeriksaan ini **tidak** mengecek `IP_HASH_SALT`; kalau variabel itu kosong, `/api/health` tetap hijau tetapi menyimpan trip gagal dengan pesan "Terjadi kesalahan di server". Uji juga dengan membuat satu trip sungguhan.
 3. **Uji bahwa kunci anon tidak bisa membaca tabel `trips`.** Di Supabase buka **SQL Editor** dan jalankan:
 
    ```sql
@@ -94,6 +86,94 @@ Jika kamu mengubah Environment Variables setelah deploy, lakukan **Redeploy** (D
    curl "https://XXXX.supabase.co/rest/v1/trips?select=*" -H "apikey: KUNCI_ANON" -H "Authorization: Bearer KUNCI_ANON"
    ```
 
+### F. Menghapus trip secara manual (kalau ada laporan)
+
+Pembuat bisa menghapus tripnya sendiri lewat link edit. Kalau ada orang melapor lewat kontak di footer (atau pembuatnya kehilangan link edit), hapus lewat dashboard Supabase:
+
+1. Minta link trip yang dilaporkan, bentuknya `https://URL-VERCEL/trip/ID`. **ID** adalah 10 karakter setelah `/trip/`.
+2. Di Supabase buka **SQL Editor** > **New query**, lalu jalankan (ganti `ID_TRIP`). Kueri pertama untuk memastikan itu trip yang benar (kontak sengaja tidak ditampilkan):
+
+   ```sql
+   select id, title, destination, creator_name, created_at
+   from public.trips where id = 'ID_TRIP';
+   ```
+
+   ```sql
+   delete from public.trips where id = 'ID_TRIP' returning id;
+   ```
+
+   Hasil yang benar: satu baris berisi ID itu. Tanpa baris = ID salah atau trip sudah terhapus.
+3. Alternatif tanpa SQL: **Table Editor** > tabel `trips` > cari baris (filter kolom `id`) > centang barisnya > **Delete row**.
+4. Akibatnya: `/trip/ID`, `/go/ID`, dan `/api/card/ID` langsung menjadi "tidak ditemukan". Dua hal di luar kendali aplikasi: (a) gambar kartu yang sudah tersimpan di CDN Vercel bisa masih tampil sekitar satu jam; (b) pratinjau link yang sudah dibuat WhatsApp/Instagram di chat orang lain tetap ada di aplikasi mereka. Kartu hanya memuat judul, tujuan, tanggal/bulan, dan tag (tanpa nama dan kontak).
+5. Tabel `events` tidak berisi data pribadi sehingga tidak perlu dibersihkan. Bila mau: `delete from public.events where trip_id = 'ID_TRIP';`.
+
+Pembuat yang kehilangan link edit tidak bisa memulihkannya (aplikasi hanya menyimpan hash-nya). Hapus trip lamanya dengan langkah di atas, lalu minta pembuat membuat trip baru.
+
+### G. Menguji status "Sudah lewat"
+
+Trip jenis "Sudah ada rencana" otomatis berstatus "Sudah lewat" mulai 00:00 WIB hari setelah tanggal pulang. Untuk melihatnya tanpa menunggu, ubah tanggal langsung di Supabase > SQL Editor pada trip uji jenis rencana (ganti `ID_TRIP_UJI`), lalu muat ulang `/trip/ID_TRIP_UJI`. Yang harus terlihat: penanda "Sudah lewat" dan tombol Hubungi nonaktif ("Trip ini sudah lewat"); `/go/ID_TRIP_UJI` mengalihkan kembali ke halaman trip, bukan ke WhatsApp/Instagram. Di halaman edit, tanggal berangkat/pulang yang lama tetap boleh disimpan, tetapi tanggal baru di masa lalu ditolak.
+
+```sql
+-- catat dulu tanggal aslinya
+select id, start_date, end_date from public.trips where id = 'ID_TRIP_UJI';
+
+-- jadikan sudah lewat (berangkat 2 hari lalu, pulang kemarin, tanggal Jakarta)
+update public.trips
+set start_date = (now() at time zone 'Asia/Jakarta')::date - 2,
+    end_date   = (now() at time zone 'Asia/Jakarta')::date - 1
+where id = 'ID_TRIP_UJI' and type = 'rencana';
+
+-- kembalikan: isi dengan tanggal asli yang dicatat tadi
+update public.trips
+set start_date = 'YYYY-MM-DD', end_date = 'YYYY-MM-DD'
+where id = 'ID_TRIP_UJI';
+```
+
+Tombol "Tandai sudah penuh" ada di halaman edit (`/edit/{token}`), bagian "Status trip".
+
+### H. Membaca hasil analytics (metrik sukses)
+
+Buka Supabase > **SQL Editor** > **New query**, salin isi [`supabase/queries/metrik-sukses.sql`](supabase/queries/metrik-sukses.sql), lalu tempel **satu kueri** (dari tanda `-- KUERI n` sampai titik koma) dan klik **Run**. Kalau seluruh file dijalankan sekaligus, hanya hasil kueri terakhir (Kueri 5: ringkasan tiga metrik) yang tampil.
+
+1. **Funnel per jenis trip dan per hari** (zona Asia/Jakarta): jumlah tiap event.
+2. **% menyelesaikan form** = `trip_created` ÷ `form_opened`, per jenis dan total.
+3. **% kartu diunduh atau linknya disalin** = trip unik dengan `card_downloaded` atau `link_copied` ÷ trip yang tercatat `trip_created`.
+4. **Trip yang menerima klik Hubungi** = jumlah trip unik dengan `contact_clicked`, plus % terhadap `trip_created`.
+
+Cara membaca dengan benar:
+
+- Angkanya **berbasis event, bukan pengunjung unik**: aplikasi sengaja tidak menyimpan data pribadi, jadi satu orang yang membuka form dua kali dihitung dua kali.
+- Klik **Hubungi** yang kamu lakukan sendiri saat menguji trip milikmu **ikut terhitung** (halaman detail milikmu tidak dihitung sebagai `detail_viewed`, tetapi `/go/{id}` tidak bisa membedakan siapa yang mengklik). Untuk membersihkan data uji: `delete from public.events where trip_id = 'ID_TRIP_UJI';`.
+- Persentase kartu dan Hubungi hanya menghitung trip yang punya event `trip_created`; trip yang dibuat sebelum Tahap 6 tidak ikut.
+- Unduhan yang dicatat adalah permintaan `?download=1` yang berhasil memulai pengiriman gambar; belum tentu file tersimpan di perangkat.
+
+Arti kolom hasilnya:
+
+| Kueri | Kolom penting | Artinya |
+| --- | --- | --- |
+| 1 (funnel) | `form_opened`, `trip_created`, `card_downloaded`, `link_copied`, `detail_viewed`, `contact_clicked` | Jumlah tiap event per hari dan jenis trip. |
+| 2 | `persen_selesai_form` | `trip_created` ÷ `form_opened`. Mis. form dibuka 40 kali dan 12 trip dibuat = 30%. Baris `TOTAL` = semua jenis. |
+| 3 | `persen_diunduh_atau_disalin` | Dari semua trip yang dibuat, berapa persen yang kartunya diunduh atau linknya disalin (per trip, bukan per klik). |
+| 4 | `persen_dengan_klik_hubungi` | Dari semua trip yang dibuat, berapa persen yang pernah menerima klik Hubungi. |
+| 5 (ringkasan, satu baris) | `1_persen_selesai_form`, `2_persen_diunduh_atau_disalin`, `3_persen_dengan_klik_hubungi` | Tiga metrik sukses sekaligus; sama dengan baris `TOTAL` kueri 2, 3, dan 4. |
+
+## Batasan v1 yang diketahui
+
+Ini sengaja diterima di v1 (rinciannya ada di [`docs/audit-v1.md`](docs/audit-v1.md)):
+
+- **Link edit hilang = tidak bisa mengedit.** Tidak ada akun dan tidak ada pemulihan; hapus manual lewat bagian F.
+- **"Trip saya" hanya ada di browser** yang dipakai membuat trip; hilang bila data browser dibersihkan atau ganti perangkat.
+- **Link edit memuat token rahasia di alamatnya.** Token tidak pernah dicatat oleh kode aplikasi, tetapi alamat lengkap bisa muncul di riwayat browser dan, kemungkinan besar, di log permintaan Vercel (log itu hanya bisa dibuka anggota proyek Vercel; belum diperiksa di dashboard Vercel sungguhan).
+- **Kartu adalah snapshot**: edit trip tidak mengubah kartu yang sudah diunduh/dibagikan, juga pratinjau gambar saat link dibagikan.
+- **Trip tidak dihapus otomatis.** Trip yang sudah lewat tetap ada (dengan penanda "Sudah lewat" dan tombol Hubungi nonaktif).
+- **Batas 5 trip per 24 jam bisa dilewati** dengan menghapus data browser (batas per perangkat), tidak berlaku akurat untuk permintaan serentak, dan satu IP seluler bersama bisa terkena batas bersama (lihat "Tahap 6").
+- **Tidak ada pembatasan laju** pada pratinjau kartu, gambar kartu, dan pencatatan event; angka analytics bisa digelembungkan oleh pihak yang sengaja.
+- **Analytics berbasis event, bukan pengunjung unik** (lihat bagian H).
+- **Pratinjau link** hanya diizinkan untuk crawler WhatsApp, Instagram/Facebook (Meta), dan Twitter/X. Aplikasi lain (mis. Telegram, Slack, Discord) mungkin tidak menampilkan pratinjau karena `/trip/` dilarang di `robots.txt`.
+- **Tidak ada tombol Laporkan.** Pelaporan lewat kontak di footer (`NEXT_PUBLIC_REPORT_CONTACT`), penanganannya manual (bagian F).
+
+Sengaja belum dibuat: feed publik/penelusuran trip, profil/login, moderasi otomatis, swipe/skor kecocokan, verifikasi/rating, chat dalam aplikasi, AI itinerary, notifikasi/ikuti trip, editor kartu bebas, dan autocomplete tujuan.
+
 ---
 
 ## Catatan teknis
@@ -102,13 +182,14 @@ Jika kamu mengubah Environment Variables setelah deploy, lakukan **Redeploy** (D
 - Row Level Security aktif tanpa policy untuk `trips` dan `events`, dan hak akses anon/authenticated dicabut, jadi kunci publik tidak bisa membaca atau menulis apa pun.
 - Tidak memakai Supabase Auth. Tabel `events` tidak menyimpan data pribadi.
 - Variabel lingkungan ada di `.env.example` (hanya nama). Untuk pengembangan lokal, salin menjadi `.env.local`; file itu diabaikan git.
-- Perintah: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`, `npm test`.
+- Perintah: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck` (menjalankan `next typegen` dulu, jadi aman di checkout baru), `npm test`.
+- Halaman 404 dan halaman galat server berbahasa Indonesia (`src/app/not-found.tsx`, `src/app/error.tsx`); halaman 404 khusus ada untuk `/trip/{id}` dan `/edit/{token}`.
 
 ### Tahap 1: cara kerja singkat
 
 - Validasi dan normalisasi ada di satu tempat, `src/lib/trip/schema.ts` (zod), dipakai form di browser dan `POST /api/trips`. Server yang menentukan; isian dari browser tidak dipercaya.
 - `POST /api/trips` memvalidasi ulang (gagal: `400` dengan pesan per field, database tidak disentuh), lalu menyimpan ke `trips`. Sukses: `201 { id, editToken }`.
-- ID trip: 10 karakter base62 acak. Token edit: 32 byte acak, hanya hash SHA-256-nya yang disimpan (`edit_token_hash`); token mentah dikirim ke browser satu kali dan disimpan di localStorage (`tripcard:mytrips`). Token tidak pernah masuk URL atau log.
+- ID trip: 10 karakter base62 acak. Token edit: 32 byte acak, hanya hash SHA-256-nya yang disimpan (`edit_token_hash`); token mentah dikirim ke browser satu kali dan disimpan di localStorage (`tripcard:mytrips`). Token juga menjadi bagian alamat link edit `/edit/{token}` (lihat Tahap 4); kode aplikasi tidak pernah mencatatnya di log.
 - `creator_ip_hash` = SHA-256(IP + `IP_HASH_SALT`), `device_id` = UUID acak dari localStorage. Keduanya dipakai untuk batas 5 trip per 24 jam sejak Tahap 6.
 - Kontak tersimpan ternormalisasi (WhatsApp `628xx` tanpa plus; Instagram tanpa `@`, huruf kecil) dan tidak ditampilkan di pratinjau.
 
@@ -117,7 +198,7 @@ Jika kamu mengubah Environment Variables setelah deploy, lakukan **Redeploy** (D
 - `/trip/{id}`: halaman publik (server component, dirender dinamis, `noindex`). ID harus 10 karakter base62; ID tidak valid atau trip tidak ada menampilkan "Trip tidak ditemukan" dengan status 404 (ID tidak valid tidak menyentuh database). Tidak ada daftar/pencarian trip; `/trip` tanpa ID adalah 404.
 - Query halaman ini memakai daftar kolom eksplisit (`PUBLIC_TRIP_COLUMNS` di `src/lib/trip/public-columns.ts`), tanpa kontak, hash token, hash IP, device id, maupun snapshot kartu.
 - Tombol "Tertarik / Hubungi" adalah tautan ke `/go/{id}`. Route itu membaca kontak di server dan membalas redirect 302 ke `https://wa.me/{nomor}` atau `https://instagram.com/{username}` (header `Cache-Control: no-store`, `X-Robots-Tag: noindex`). Nomor/akun tidak ada di HTML halaman trip.
-- `public/robots.txt` melarang `/go/` dan `/trip/`.
+- `public/robots.txt` melarang `/go/`, `/trip/`, dan `/edit/` (kecuali `/trip/` untuk crawler pratinjau link; lihat Tahap 3).
 
 Cek setelah deploy (ganti `URL` dan `ID`):
 
@@ -189,23 +270,7 @@ curl -i https://URL/go/ID
 curl -s https://URL/trip/ID | grep -c 'href="/go/'
 ```
 
-Untuk menguji "Sudah lewat" (form edit menolak tanggal berangkat di masa lalu), ubah tanggal langsung di Supabase > SQL Editor pada trip uji jenis rencana (ganti `ID_TRIP_UJI`):
-
-```sql
--- catat dulu tanggal aslinya
-select id, start_date, end_date from public.trips where id = 'ID_TRIP_UJI';
-
--- jadikan sudah lewat (berangkat 2 hari lalu, pulang kemarin, tanggal Jakarta)
-update public.trips
-set start_date = (now() at time zone 'Asia/Jakarta')::date - 2,
-    end_date   = (now() at time zone 'Asia/Jakarta')::date - 1
-where id = 'ID_TRIP_UJI' and type = 'rencana';
-
--- kembalikan: isi dengan tanggal asli yang dicatat tadi
-update public.trips
-set start_date = 'YYYY-MM-DD', end_date = 'YYYY-MM-DD'
-where id = 'ID_TRIP_UJI';
-```
+Cara menguji tampilan "Sudah lewat" lewat SQL ada di bagian **G** di atas.
 
 ### Tahap 6: cara kerja singkat
 
@@ -235,21 +300,7 @@ Batasan yang diterima di v1 (sengaja belum diperbaiki):
 - `POST /api/events` hanya menerima `form_opened`, `detail_viewed`, `link_copied`. Untuk event dengan `tripId`, `trip_type` diturunkan dari tabel `trips` (nilai dari klien diabaikan); trip tidak ada = tidak dicatat. Balasan 204 tanpa body (juga untuk bot/diabaikan), 400 untuk body atau event tidak valid (termasuk body > 500 karakter).
 - `isBot(userAgent)` (`src/lib/analytics/is-bot.ts`) menyaring crawler, `curl`, dsb. dan UA kosong; browser dalam aplikasi Instagram/TikTok/Facebook tidak disaring. Crawler pratinjau link tidak menjalankan JavaScript, jadi `detail_viewed` (dari klien) memang tidak menghitungnya.
 
-### Membaca hasil analytics (metrik sukses)
-
-Buka Supabase > **SQL Editor** > **New query**, salin isi [`supabase/queries/metrik-sukses.sql`](supabase/queries/metrik-sukses.sql), lalu tempel **satu kueri** (dari tanda `-- KUERI n` sampai titik koma) dan klik **Run**. Kalau seluruh file dijalankan sekaligus, hanya hasil kueri terakhir (Kueri 5: ringkasan tiga metrik) yang tampil.
-
-1. **Funnel per jenis trip dan per hari** (zona Asia/Jakarta): jumlah tiap event.
-2. **% menyelesaikan form** = `trip_created` ÷ `form_opened`, per jenis dan total.
-3. **% kartu diunduh atau linknya disalin** = trip unik dengan `card_downloaded` atau `link_copied` ÷ trip yang tercatat `trip_created`.
-4. **Trip yang menerima klik Hubungi** = jumlah trip unik dengan `contact_clicked`, plus % terhadap `trip_created`.
-
-Cara membaca dengan benar:
-
-- Angkanya **berbasis event, bukan pengunjung unik**: aplikasi sengaja tidak menyimpan data pribadi, jadi satu orang yang membuka form dua kali dihitung dua kali.
-- Klik **Hubungi** yang kamu lakukan sendiri saat menguji trip milikmu **ikut terhitung** (halaman detail milikmu tidak dihitung sebagai `detail_viewed`, tetapi `/go/{id}` tidak bisa membedakan siapa yang mengklik). Untuk membersihkan data uji: `delete from public.events where trip_id = 'ID_TRIP_UJI';`.
-- Persentase kartu dan Hubungi hanya menghitung trip yang punya event `trip_created`; trip yang dibuat sebelum Tahap 6 tidak ikut.
-- Unduhan yang dicatat adalah permintaan `?download=1` yang berhasil memulai pengiriman gambar; belum tentu file tersimpan di perangkat.
+Cara membaca hasil analytics (metrik sukses) ada di bagian **H** di atas.
 
 Cek setelah deploy (ganti `URL` dan `ID`):
 

@@ -39,11 +39,6 @@ export function getKnownClientIp(headers: Headers): string | null {
   return forwarded || headers.get("x-real-ip")?.trim() || null;
 }
 
-/** Seperti `getKnownClientIp`, tetapi "unknown" bila IP tidak diketahui. */
-export function getClientIp(headers: Headers): string {
-  return getKnownClientIp(headers) ?? "unknown";
-}
-
 /** SHA-256 dari (IP + IP_HASH_SALT). Melempar bila salt belum diisi. */
 export function hashIp(ip: string): string {
   const salt = process.env.IP_HASH_SALT;

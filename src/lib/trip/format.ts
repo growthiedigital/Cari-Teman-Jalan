@@ -66,7 +66,7 @@ export function formatTripTime(
   return formatMonthRange(trip.month_start, trip.month_end);
 }
 
-/** 2500000 -> "Rp 2.500.000 / orang" */
+/** 2500000 -> "Rp2.500.000 / orang" */
 export function formatBudgetPerPerson(value: number): string {
-  return `Rp ${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ".")} / orang`;
+  return `Rp${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ".")} / orang`;
 }
