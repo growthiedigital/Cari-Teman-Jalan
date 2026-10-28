@@ -2,7 +2,9 @@
 
 Aplikasi web tanpa login untuk orang yang cari teman jalan: isi form singkat, dapat kartu trip untuk dibagikan ke media sosial, dan halaman detail publik dengan tombol Hubungi.
 
-> **Status: Tahap 5 (status trip: "Sudah lewat" otomatis dan "Sudah penuh").** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau teks dan pratinjau kartu), penyimpanan ke database lewat `POST /api/trips`, kartu trip berupa gambar PNG (`/api/card/{id}`), layar `/sukses` (unduh gambar, salin link, link edit rahasia), halaman publik `/trip/{id}` dengan pratinjau link (Open Graph), tombol Hubungi lewat `/go/{id}`, "Trip saya" (`/trip-saya`), serta edit dan hapus trip lewat link rahasia `/edit/{token}`. Sejak Tahap 5, trip bisa ditandai "Sudah penuh" dan trip rencana yang tanggal pulangnya lewat otomatis "Sudah lewat". Analytics dibuat di tahap berikutnya.
+> **Status: Tahap 6 (perlindungan dasar + analytics).** Sejak Tahap 6, satu perangkat/IP dibatasi 5 trip per 24 jam dan enam event analytics tanpa data pribadi dicatat ke tabel `events` (lihat bagian "Tahap 6"). Ringkasan Tahap 5:
+>
+> **Tahap 5 (status trip: "Sudah lewat" otomatis dan "Sudah penuh").** Sudah ada form `/buat` (dua jenis trip, validasi, pratinjau teks dan pratinjau kartu), penyimpanan ke database lewat `POST /api/trips`, kartu trip berupa gambar PNG (`/api/card/{id}`), layar `/sukses` (unduh gambar, salin link, link edit rahasia), halaman publik `/trip/{id}` dengan pratinjau link (Open Graph), tombol Hubungi lewat `/go/{id}`, "Trip saya" (`/trip-saya`), serta edit dan hapus trip lewat link rahasia `/edit/{token}`. Sejak Tahap 5, trip bisa ditandai "Sudah penuh" dan trip rencana yang tanggal pulangnya lewat otomatis "Sudah lewat".
 
 Dibangun dengan Next.js (App Router, TypeScript, Tailwind), dideploy di Vercel, dengan Supabase sebagai database Postgres.
 
@@ -107,7 +109,7 @@ Jika kamu mengubah Environment Variables setelah deploy, lakukan **Redeploy** (D
 - Validasi dan normalisasi ada di satu tempat, `src/lib/trip/schema.ts` (zod), dipakai form di browser dan `POST /api/trips`. Server yang menentukan; isian dari browser tidak dipercaya.
 - `POST /api/trips` memvalidasi ulang (gagal: `400` dengan pesan per field, database tidak disentuh), lalu menyimpan ke `trips`. Sukses: `201 { id, editToken }`.
 - ID trip: 10 karakter base62 acak. Token edit: 32 byte acak, hanya hash SHA-256-nya yang disimpan (`edit_token_hash`); token mentah dikirim ke browser satu kali dan disimpan di localStorage (`tripcard:mytrips`). Token tidak pernah masuk URL atau log.
-- `creator_ip_hash` = SHA-256(IP + `IP_HASH_SALT`), `device_id` = UUID acak dari localStorage. Keduanya baru disimpan; belum ada pembatasan (Tahap 6).
+- `creator_ip_hash` = SHA-256(IP + `IP_HASH_SALT`), `device_id` = UUID acak dari localStorage. Keduanya dipakai untuk batas 5 trip per 24 jam sejak Tahap 6.
 - Kontak tersimpan ternormalisasi (WhatsApp `628xx` tanpa plus; Instagram tanpa `@`, huruf kecil) dan tidak ditampilkan di pratinjau.
 
 ### Tahap 2: cara kerja singkat
@@ -203,6 +205,61 @@ where id = 'ID_TRIP_UJI' and type = 'rencana';
 update public.trips
 set start_date = 'YYYY-MM-DD', end_date = 'YYYY-MM-DD'
 where id = 'ID_TRIP_UJI';
+```
+
+### Tahap 6: cara kerja singkat
+
+Tidak ada migrasi: tabel `events` dan indeks `(creator_ip_hash, created_at)` serta `(device_id, created_at)` sudah ada sejak Tahap 0.
+
+**Batas pembuatan trip.** `MAX_TRIPS_PER_WINDOW = 5` dalam jendela 24 jam bergulir (`src/lib/trip/rate-limit.ts`). Di `POST /api/trips`, setelah validasi lolos dan sebelum insert, server menghitung baris `trips` dalam 24 jam terakhir dengan `creator_ip_hash` yang sama ATAU `device_id` yang sama; bila salah satu >= 5, balasannya `429` + header `Retry-After` (detik sampai satu slot kosong) + pesan umum "Kamu sudah membuat 5 trip dalam 24 jam terakhir. Coba lagi nanti." Form menampilkannya di atas tombol Kirim dan semua isian tetap ada. Bila IP klien tidak bisa ditentukan, hanya `device_id` yang dihitung. Edit, hapus, status, dan pratinjau kartu tidak dibatasi.
+
+Batasan yang diterima di v1 (sengaja belum diperbaiki):
+
+- Menghapus trip membebaskan satu slot, karena hitungan berdasar baris `trips` yang ada.
+- Permintaan serentak bisa sedikit melewati batas (hitung lalu insert tidak atomik).
+- Pengguna di jaringan seluler yang berbagi satu IP bisa terkena batas bersama lewat IP.
+- Siapa pun bisa mengganti `device_id` (hapus data browser) untuk lolos dari batas per perangkat; yang tetap menahan hanya batas per IP.
+
+**Analytics tanpa data pribadi.** Tabel `events` hanya berisi `event`, `trip_type`, `trip_id`, dan waktu. Tidak ada IP, user agent, referrer, `device_id`, cookie, atau token.
+
+| Event | Dicatat di | Kapan |
+| --- | --- | --- |
+| `form_opened` | klien `/buat` → `POST /api/events` | pengguna memilih jenis trip; sekali per pemuatan halaman |
+| `trip_created` | server, `POST /api/trips` | hanya setelah insert berhasil |
+| `card_downloaded` | server, `GET /api/card/{id}?download=1` | gambar berhasil dibuat; varian ini `Cache-Control: no-store` |
+| `link_copied` | klien `/sukses` → `POST /api/events` | "Salin link" (halaman detail) berhasil; "Salin link edit" tidak |
+| `detail_viewed` | klien `/trip/{id}` → `POST /api/events` | sekali per pemuatan; tidak dicatat bila trip ada di "Trip saya" browser itu |
+| `contact_clicked` | server, `/go/{id}` | hanya saat benar-benar redirect ke WhatsApp/Instagram; bukan HEAD, bukan prefetch |
+
+- `recordEvent` (`src/lib/analytics/record-event.ts`) tidak pernah melempar error; di server dijalankan lewat `after()` (Next.js >= 15) sehingga tidak menunda respons.
+- `POST /api/events` hanya menerima `form_opened`, `detail_viewed`, `link_copied`. Untuk event dengan `tripId`, `trip_type` diturunkan dari tabel `trips` (nilai dari klien diabaikan); trip tidak ada = tidak dicatat. Balasan 204 tanpa body (juga untuk bot/diabaikan), 400 untuk body atau event tidak valid (termasuk body > 500 karakter).
+- `isBot(userAgent)` (`src/lib/analytics/is-bot.ts`) menyaring crawler, `curl`, dsb. dan UA kosong; browser dalam aplikasi Instagram/TikTok/Facebook tidak disaring. Crawler pratinjau link tidak menjalankan JavaScript, jadi `detail_viewed` (dari klien) memang tidak menghitungnya.
+
+### Membaca hasil analytics (metrik sukses)
+
+Buka Supabase > **SQL Editor** > **New query**, salin isi [`supabase/queries/metrik-sukses.sql`](supabase/queries/metrik-sukses.sql), lalu tempel **satu kueri** (dari tanda `-- KUERI n` sampai titik koma) dan klik **Run**. Kalau seluruh file dijalankan sekaligus, hanya hasil kueri terakhir (Kueri 5: ringkasan tiga metrik) yang tampil.
+
+1. **Funnel per jenis trip dan per hari** (zona Asia/Jakarta): jumlah tiap event.
+2. **% menyelesaikan form** = `trip_created` ÷ `form_opened`, per jenis dan total.
+3. **% kartu diunduh atau linknya disalin** = trip unik dengan `card_downloaded` atau `link_copied` ÷ trip yang tercatat `trip_created`.
+4. **Trip yang menerima klik Hubungi** = jumlah trip unik dengan `contact_clicked`, plus % terhadap `trip_created`.
+
+Cara membaca dengan benar:
+
+- Angkanya **berbasis event, bukan pengunjung unik**: aplikasi sengaja tidak menyimpan data pribadi, jadi satu orang yang membuka form dua kali dihitung dua kali.
+- Klik **Hubungi** yang kamu lakukan sendiri saat menguji trip milikmu **ikut terhitung** (halaman detail milikmu tidak dihitung sebagai `detail_viewed`, tetapi `/go/{id}` tidak bisa membedakan siapa yang mengklik). Untuk membersihkan data uji: `delete from public.events where trip_id = 'ID_TRIP_UJI';`.
+- Persentase kartu dan Hubungi hanya menghitung trip yang punya event `trip_created`; trip yang dibuat sebelum Tahap 6 tidak ikut.
+- Unduhan yang dicatat adalah permintaan `?download=1` yang berhasil memulai pengiriman gambar; belum tentu file tersimpan di perangkat.
+
+Cek setelah deploy (ganti `URL` dan `ID`):
+
+```bash
+# unduhan: harus Cache-Control: no-store (varian lain tetap memakai cache Tahap 3)
+curl -sI "https://URL/api/card/ID?r=9x16&download=1" | grep -i cache-control
+# event server-only ditolak: harus 400
+curl -i -X POST https://URL/api/events -H "Content-Type: application/json" -d '{"event":"trip_created","tripId":"ID"}'
+# HEAD tidak mengarah ke kontak: harus 204 tanpa Location
+curl -I https://URL/go/ID
 ```
 
 ### Menguji validasi server dengan curl

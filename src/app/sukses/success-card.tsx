@@ -7,6 +7,7 @@ import { useState } from "react";
 import { RatioToggle } from "@/components/ratio-toggle";
 import { DEFAULT_RATIO, type CardRatio } from "@/lib/card/spec";
 import { tripUrl } from "@/lib/card/site-url";
+import { sendEvent } from "@/lib/analytics/send-event";
 import { copyText } from "@/lib/copy-text";
 
 type Props = {
@@ -37,12 +38,11 @@ export function SuccessCard({ id, siteUrl }: Props) {
     setFailed(false);
   }
 
-  // Tahap 6: catat event `card_downloaded` di sini (klik "Unduh gambar").
-  function handleDownload() {}
-
-  // Tahap 6: catat event `link_copied` di sini (setelah berhasil menyalin).
+  // `card_downloaded` dicatat di server (GET /api/card/{id}?download=1), bukan di klien.
   async function handleCopy() {
     const ok = await copyText(tripUrl(siteUrl, id));
+    // Hanya link halaman detail publik; "Salin link edit" tidak dicatat.
+    if (ok) sendEvent({ event: "link_copied", tripId: id });
     setCopyState(ok ? "copied" : "failed");
     setTimeout(() => setCopyState("idle"), COPIED_MS);
   }
@@ -99,7 +99,7 @@ export function SuccessCard({ id, siteUrl }: Props) {
       <RatioToggle value={ratio} onChange={changeRatio} />
 
       <div className="flex flex-col gap-3">
-        <a href={downloadHref} download onClick={handleDownload} className={primaryButton}>
+        <a href={downloadHref} download className={primaryButton}>
           Unduh gambar
         </a>
         <button type="button" onClick={handleCopy} className={secondaryButton}>

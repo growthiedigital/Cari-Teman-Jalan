@@ -2,14 +2,19 @@ import { createHash } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { insert, from, getSupabaseServer } = vi.hoisted(() => {
+const { insert, from, getSupabaseServer, recordEventAfter } = vi.hoisted(() => {
   const insert = vi.fn();
-  const from = vi.fn(() => ({ insert }));
+  // Hitungan batas pembuatan trip: select(...).eq().gte().order().limit() -> tidak ada baris.
+  const chain: Record<string, unknown> = {};
+  for (const name of ["eq", "gte", "order", "limit"]) chain[name] = () => chain;
+  chain.then = (resolve: (v: unknown) => unknown) => resolve({ data: [], error: null });
+  const from = vi.fn(() => ({ insert, select: () => chain }));
   const getSupabaseServer = vi.fn(() => ({ from }));
-  return { insert, from, getSupabaseServer };
+  return { insert, from, getSupabaseServer, recordEventAfter: vi.fn() };
 });
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseServer }));
+vi.mock("@/lib/analytics/record-event", () => ({ recordEventAfter }));
 
 import { POST } from "./route";
 
@@ -44,6 +49,7 @@ beforeEach(() => {
   insert.mockReset();
   from.mockClear();
   getSupabaseServer.mockClear();
+  recordEventAfter.mockClear();
   process.env.IP_HASH_SALT = "garam-uji-garam-uji-garam-uji-1234";
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -99,6 +105,12 @@ describe("POST /api/trips: input valid (database ditiru, BUKAN Supabase sungguha
     expect(from).toHaveBeenCalledWith("trips");
     const row = insert.mock.calls[0][0];
     expect(row.id).toBe(body.id);
+    expect(recordEventAfter).toHaveBeenCalledOnce();
+    expect(recordEventAfter).toHaveBeenCalledWith({
+      event: "trip_created",
+      tripType: "rencana",
+      tripId: body.id,
+    });
     expect(row.edit_token_hash).toBe(createHash("sha256").update(body.editToken).digest("hex"));
     expect(JSON.stringify(row)).not.toContain(body.editToken);
     expect(row.contact_value).toBe("6281234567890");

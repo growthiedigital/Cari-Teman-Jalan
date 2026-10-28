@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { isBot } from "@/lib/analytics/is-bot";
+import { isPrefetchRequest } from "@/lib/analytics/is-prefetch";
+import { recordEventAfter } from "@/lib/analytics/record-event";
 import { buildContactUrl } from "@/lib/trip/contact-url";
 import { getTripContact } from "@/lib/trip/queries";
 import { tripStatus } from "@/lib/trip/status";
@@ -25,7 +28,7 @@ function plain(message: string, status: number) {
  * kontak (tautan lama, cache, atau URL yang disalin tidak boleh melewati
  * tombol nonaktif): dialihkan kembali ke halaman detail.
  */
-export async function GET(_request: Request, ctx: RouteContext<"/go/[id]">) {
+export async function GET(request: Request, ctx: RouteContext<"/go/[id]">) {
   const { id } = await ctx.params;
 
   let contact: Awaited<ReturnType<typeof getTripContact>>;
@@ -54,9 +57,24 @@ export async function GET(_request: Request, ctx: RouteContext<"/go/[id]">) {
   const url = buildContactUrl(contact.contactType, contact.contactValue);
   if (!url) return plain("Trip tidak ditemukan atau sudah dihapus.", 404);
 
-  // Tahap 6: catat event `contact_clicked` HANYA di sini, pada jalur yang
-  // benar-benar mengarahkan ke kontak (setelah lolos canContact), sebelum
-  // redirect. Jangan menahan redirect bila pencatatan gagal.
+  // `contact_clicked` HANYA dicatat di sini, pada jalur yang benar-benar
+  // mengarahkan ke kontak. Prefetch dan bot tidak dihitung; pencatatan berjalan
+  // setelah respons dan tidak pernah menahan redirect.
+  if (!isPrefetchRequest(request.headers) && !isBot(request.headers.get("user-agent"))) {
+    recordEventAfter({
+      event: "contact_clicked",
+      tripType: contact.type === "rencana" || contact.type === "niat" ? contact.type : null,
+      tripId: id,
+    });
+  }
 
   return NextResponse.redirect(url, { status: 302, headers: HEADERS });
+}
+
+/**
+ * HEAD (pemeriksa tautan, crawler): tidak pernah mengarah ke kontak dan tidak
+ * mencatat event. Tidak menyentuh database.
+ */
+export function HEAD() {
+  return new NextResponse(null, { status: 204, headers: HEADERS });
 }

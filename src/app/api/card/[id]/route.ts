@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { isBot } from "@/lib/analytics/is-bot";
+import { recordEventAfter } from "@/lib/analytics/record-event";
 import { renderCard } from "@/lib/card/render-card";
 import { getSiteUrl, tripUrl } from "@/lib/card/site-url";
 import { parseRatio, parseSize } from "@/lib/card/spec";
@@ -12,6 +14,8 @@ export const dynamic = "force-dynamic";
 // lama di CDN. 5 menit di browser, 1 jam di CDN, lalu boleh dipakai ulang
 // sambil diperbarui di latar belakang sampai 1 hari.
 const CACHE_CONTROL = "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400";
+
+const DOWNLOAD_CACHE_CONTROL = "no-store";
 
 function plain(message: string, status: number) {
   return new NextResponse(message, {
@@ -46,20 +50,29 @@ export async function GET(request: Request, ctx: RouteContext<"/api/card/[id]">)
   }
   if (!snapshot) return plain("Kartu tidak ditemukan.", 404);
 
-  const headers: Record<string, string> = { "cache-control": CACHE_CONTROL };
-  if (params.get("download") === "1") {
+  // Unduhan tidak boleh dilayani CDN tanpa menjalankan fungsi ini, kalau tidak
+  // `card_downloaded` terhitung kurang. Varian lain tetap memakai cache.
+  const isDownload = params.get("download") === "1";
+  const headers: Record<string, string> = {
+    "cache-control": isDownload ? DOWNLOAD_CACHE_CONTROL : CACHE_CONTROL,
+  };
+  if (isDownload) {
     headers["content-disposition"] = `attachment; filename="trip-card-${id}-${ratio}.png"`;
   }
 
-  // Tahap 6: catat event `card_downloaded` hanya dari tombol "Unduh gambar"
-  // di klien (bukan di sini; route ini juga dipakai crawler dan pratinjau).
   try {
-    return await renderCard(snapshot, {
+    const response = await renderCard(snapshot, {
       ratio,
       size,
       url: tripUrl(getSiteUrl(request.url), id),
       headers,
     });
+    // `card_downloaded` hanya untuk unduhan (download=1) yang berhasil dirender;
+    // OG dan tampilan di halaman tidak dicatat.
+    if (isDownload && !isBot(request.headers.get("user-agent"))) {
+      recordEventAfter({ event: "card_downloaded", tripType: snapshot.type, tripId: id });
+    }
+    return response;
   } catch (error) {
     console.error("[GET /api/card/[id]] gagal merender", {
       name: error instanceof Error ? error.name : "unknown",
