@@ -95,7 +95,7 @@ describe("kolom halaman detail", () => {
       [
         "id", "type", "title", "destination", "tags", "buddies_wanted", "note",
         "budget", "itinerary", "start_date", "end_date", "month_start",
-        "month_end", "intention", "creator_name",
+        "month_end", "intention", "creator_name", "is_full",
       ].sort(),
     );
   });

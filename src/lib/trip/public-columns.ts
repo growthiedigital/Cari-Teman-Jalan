@@ -22,6 +22,7 @@ export const PUBLIC_TRIP_COLUMNS = [
   "month_end",
   "intention",
   "creator_name",
+  "is_full",
 ] as const;
 
 export const PUBLIC_TRIP_SELECT = PUBLIC_TRIP_COLUMNS.join(", ");
@@ -29,7 +30,16 @@ export const PUBLIC_TRIP_SELECT = PUBLIC_TRIP_COLUMNS.join(", ");
 /** Kolom kontak: hanya dibaca oleh route /go/[id]. */
 export const CONTACT_COLUMNS = ["contact_type", "contact_value"] as const;
 
-export const CONTACT_SELECT = CONTACT_COLUMNS.join(", ");
+/**
+ * Kolom yang dibaca /go/[id]: kontak plus kolom status (`is_full`, `type`,
+ * `end_date`) supaya server bisa menolak trip penuh/lewat.
+ */
+export const CONTACT_SELECT = [
+  ...CONTACT_COLUMNS,
+  "is_full",
+  "type",
+  "end_date",
+].join(", ");
 
 /** Baris trip untuk halaman publik. Tanggal `date` berbentuk YYYY-MM-DD (teks). */
 export type PublicTrip = {
@@ -48,4 +58,5 @@ export type PublicTrip = {
   month_end: string | null;
   intention: string | null;
   creator_name: string;
+  is_full: boolean;
 };

@@ -30,10 +30,17 @@ export async function getPublicTrip(id: string): Promise<PublicTrip | null> {
   return (data as PublicTrip | null) ?? null;
 }
 
-/** Kontak trip (hanya untuk /go/[id]). Aturan id dan error sama dengan di atas. */
-export async function getTripContact(
-  id: string,
-): Promise<{ contactType: string; contactValue: string } | null> {
+/**
+ * Kontak trip beserta kolom status-nya (hanya untuk /go/[id]). Aturan id dan
+ * error sama dengan di atas.
+ */
+export async function getTripContact(id: string): Promise<{
+  contactType: string;
+  contactValue: string;
+  isFull: boolean;
+  type: string;
+  endDate: string | null;
+} | null> {
   if (!isValidTripId(id)) return null;
   const { data, error } = await getSupabaseServer()
     .from("trips")
@@ -45,8 +52,20 @@ export async function getTripContact(
     throw new Error("Gagal memuat kontak trip.");
   }
   if (!data) return null;
-  const row = data as unknown as { contact_type: string; contact_value: string };
-  return { contactType: row.contact_type, contactValue: row.contact_value };
+  const row = data as unknown as {
+    contact_type: string;
+    contact_value: string;
+    is_full: boolean;
+    type: string;
+    end_date: string | null;
+  };
+  return {
+    contactType: row.contact_type,
+    contactValue: row.contact_value,
+    isFull: row.is_full,
+    type: row.type,
+    endDate: row.end_date,
+  };
 }
 
 /**

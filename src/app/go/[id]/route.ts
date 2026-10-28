@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { buildContactUrl } from "@/lib/trip/contact-url";
 import { getTripContact } from "@/lib/trip/queries";
+import { tripStatus } from "@/lib/trip/status";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,9 @@ function plain(message: string, status: number) {
 /**
  * Tombol "Tertarik / Hubungi": kontak hanya dibaca di sini, di server, lalu
  * dialihkan (302) ke WhatsApp/Instagram. Nomor/handle tidak pernah ada di HTML
- * halaman trip.
+ * halaman trip. Trip "Sudah penuh" atau "Sudah lewat" TIDAK diarahkan ke
+ * kontak (tautan lama, cache, atau URL yang disalin tidak boleh melewati
+ * tombol nonaktif): dialihkan kembali ke halaman detail.
  */
 export async function GET(_request: Request, ctx: RouteContext<"/go/[id]">) {
   const { id } = await ctx.params;
@@ -32,11 +35,28 @@ export async function GET(_request: Request, ctx: RouteContext<"/go/[id]">) {
     return plain("Terjadi kesalahan di server. Coba lagi beberapa saat lagi.", 500);
   }
 
-  const url = contact && buildContactUrl(contact.contactType, contact.contactValue);
-  if (!contact || !url) return plain("Trip tidak ditemukan atau sudah dihapus.", 404);
+  if (!contact) return plain("Trip tidak ditemukan atau sudah dihapus.", 404);
 
-  // Tahap 6: catat event `contact_clicked` di sini (satu-satunya titik
-  // penambahan), sebelum redirect. Jangan menahan redirect bila gagal.
+  const status = tripStatus({
+    is_full: contact.isFull,
+    type: contact.type,
+    end_date: contact.endDate,
+  });
+  if (!status.canContact) {
+    // Location relatif (valid untuk 302) supaya tidak bergantung pada host.
+    // Bukan klik kontak: jalur ini tidak boleh dicatat sebagai `contact_clicked`.
+    return new NextResponse(null, {
+      status: 302,
+      headers: { ...HEADERS, Location: `/trip/${id}` },
+    });
+  }
+
+  const url = buildContactUrl(contact.contactType, contact.contactValue);
+  if (!url) return plain("Trip tidak ditemukan atau sudah dihapus.", 404);
+
+  // Tahap 6: catat event `contact_clicked` HANYA di sini, pada jalur yang
+  // benar-benar mengarahkan ke kontak (setelah lolos canContact), sebelum
+  // redirect. Jangan menahan redirect bila pencatatan gagal.
 
   return NextResponse.redirect(url, { status: 302, headers: HEADERS });
 }

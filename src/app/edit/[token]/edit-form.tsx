@@ -14,6 +14,9 @@ import { TRIP_TYPE_LABELS, type TripErrors, type TripType } from "@/lib/trip/con
 import type { FormValues } from "@/lib/trip/form-values";
 import { removeMyTrip, updateMyTripTitle } from "@/lib/trip/local-storage";
 import { validateTripEdit, type StoredTripTiming } from "@/lib/trip/schema";
+import { isExpired } from "@/lib/trip/status";
+
+import { StatusSection } from "./status-section";
 
 type Props = {
   token: string;
@@ -22,6 +25,9 @@ type Props = {
   initialValues: FormValues;
   stored: StoredTripTiming;
   today: string;
+  /** Waktu server saat halaman dirender (ISO), supaya "sudah lewat" sama di server dan klien. */
+  nowIso: string;
+  isFull: boolean;
   months: { value: string; label: string }[];
 };
 
@@ -51,10 +57,22 @@ function Alert({ children, tone }: { children: React.ReactNode; tone: "error" | 
   );
 }
 
-export function EditForm({ token, tripId, type, initialValues, stored, today, months }: Props) {
+export function EditForm({
+  token,
+  tripId,
+  type,
+  initialValues,
+  stored,
+  today,
+  nowIso,
+  isFull,
+  months,
+}: Props) {
   const { values, errors, setErrors, setValue } = useTripFormState(initialValues);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Tanggal pulang yang tersimpan: berubah setelah simpan, memengaruhi "Sudah lewat".
+  const [savedEndDate, setSavedEndDate] = useState(stored.endDate);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -107,6 +125,7 @@ export function EditForm({ token, tripId, type, initialValues, stored, today, mo
         return;
       }
       if (typeof result.title === "string") updateMyTripTitle(tripId, result.title);
+      setSavedEndDate(type === "rencana" ? body.endDate || null : null);
       setSaved(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
@@ -164,6 +183,7 @@ export function EditForm({ token, tripId, type, initialValues, stored, today, mo
   const startMin =
     stored.startDate && stored.startDate < today ? stored.startDate : today;
   const formError = errors.form ?? errors.type;
+  const expired = isExpired({ type, end_date: savedEndDate }, new Date(nowIso));
 
   return (
     <main className={shell}>
@@ -184,6 +204,8 @@ export function EditForm({ token, tripId, type, initialValues, stored, today, mo
           </Link>
         </div>
       )}
+
+      <StatusSection token={token} initialIsFull={isFull} expired={expired} />
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
         {formError && <Alert tone="error">{formError}</Alert>}
